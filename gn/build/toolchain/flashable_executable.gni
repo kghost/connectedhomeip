@@ -82,7 +82,7 @@ template("gen_erasing_script") {
                          ])
   gen_flashing_script(target_name) {
     flashing_script_name = erasing_script_name
-    flashing_action = ["erase"]
+    flashing_action = [ "erase" ]
   }
 }
 

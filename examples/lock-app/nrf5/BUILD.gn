@@ -16,8 +16,8 @@ import("//build_overrides/chip.gni")
 import("//build_overrides/nrf5_sdk.gni")
 import("//build_overrides/openthread.gni")
 
-import("${nrf5_sdk_build_root}/nrf5_sdk.gni")
 import("${nrf5_sdk_build_root}/nrf5_executable.gni")
+import("${nrf5_sdk_build_root}/nrf5_sdk.gni")
 flashing_script_generator = "${nrf5_sdk_build_root}/gen_flashing_script.py"
 
 assert(current_os == "freertos")
@@ -124,8 +124,8 @@ gen_erasing_script("erase_script") {
 
 group("nrf5") {
   deps = [
-    ":lock_app",
     ":erase_script",
+    ":lock_app",
     ":softdevice_script",
   ]
 }
