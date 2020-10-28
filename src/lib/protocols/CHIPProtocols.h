@@ -1,7 +1,6 @@
 /*
  *
  *    Copyright (c) 2020 Project CHIP Authors
- *    Copyright (c) 2013-2017 Nest Labs, Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -23,8 +22,7 @@
  *
  */
 
-#ifndef CHIP_PROTOCOLS_H_
-#define CHIP_PROTOCOLS_H_
+#pragma once
 
 #include <core/CHIPVendorIdentifiers.hpp>
 
@@ -48,13 +46,12 @@ enum CHIPProtocolId
     //
     // NOTE: Do not attempt to allocate these values yourself.
 
-    kChipProtocol_Common              = (kChipVendor_Common << 16) | 0x0000, // Common Protocol
-    kChipProtocol_Echo                = (kChipVendor_Common << 16) | 0x0001, // Echo Protocol
-    kChipProtocol_SecurePairing       = (kChipVendor_Common << 16) | 0x0002, // SPAKE2+ handshake Protocol
-    kChipProtocol_NetworkProvisioning = (kChipVendor_Common << 16) | 0x0003, // Network Provisioning Protocol
-    kChipProtocol_Security            = (kChipVendor_Common << 16) | 0x0004, // Network Security Protocol
-    kChipProtocol_FabricProvisioning  = (kChipVendor_Common << 16) | 0x0005, // Fabric Provisioning Protocol
-    kChipProtocol_ServiceProvisioning = (kChipVendor_Common << 16) | 0x000F, // Service Provisioning Protocol
+    kChipProtocol_SecurityChannel     = (kChipVendor_Common << 16) | 0x0001, // Security Channel Protocol
+    kChipProtocol_Echo                = (kChipVendor_Common << 16) | 0x0002, // Echo Protocol
+    kChipProtocol_BDX                 = (kChipVendor_Common << 16) | 0x0003, // Bulk Data Exchange Protocol
+    kChipProtocol_NetworkProvisioning = (kChipVendor_Common << 16) | 0x0004, // Network Provisioning Protocol
+    kChipProtocol_InteractionModel    = (kChipVendor_Common << 16) | 0x0005, // Interaction Model Protocol
+    kChipProtocol_ServiceProvisioning = (kChipVendor_Common << 16) | 0x0006, // Service Provisioning Protocol
 
     // Protocols reserved for internal protocol use
 
@@ -63,5 +60,3 @@ enum CHIPProtocolId
 
 } // namespace Protocols
 } // namespace chip
-
-#endif /* CHIP_PROTOCOLS_H_ */
