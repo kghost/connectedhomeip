@@ -46,12 +46,14 @@ enum CHIPProtocolId
     //
     // NOTE: Do not attempt to allocate these values yourself.
 
+    kChipProtocol_Common              = (kChipVendor_Common << 16) | 0x0000, // Common Protocol
     kChipProtocol_SecurityChannel     = (kChipVendor_Common << 16) | 0x0001, // Security Channel Protocol
     kChipProtocol_Echo                = (kChipVendor_Common << 16) | 0x0002, // Echo Protocol
     kChipProtocol_BDX                 = (kChipVendor_Common << 16) | 0x0003, // Bulk Data Exchange Protocol
     kChipProtocol_NetworkProvisioning = (kChipVendor_Common << 16) | 0x0004, // Network Provisioning Protocol
     kChipProtocol_InteractionModel    = (kChipVendor_Common << 16) | 0x0005, // Interaction Model Protocol
     kChipProtocol_ServiceProvisioning = (kChipVendor_Common << 16) | 0x0006, // Service Provisioning Protocol
+    kChipProtocol_SecurePairing       = (kChipVendor_Common << 16) | 0xFF00, // (Deprecated) SPAKE2+ handshake Protocol
 
     // Protocols reserved for internal protocol use
 
