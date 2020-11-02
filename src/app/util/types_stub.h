@@ -454,8 +454,6 @@ enum
     EMBER_OUTGOING_DIRECT,
     /** Unicast sent using an entry in the address table. */
     EMBER_OUTGOING_VIA_ADDRESS_TABLE,
-    /** Unicast sent using an entry in the binding table. */
-    EMBER_OUTGOING_VIA_BINDING,
     /** Multicast message.  This value is passed to emberMessageSentHandler() only.
      * It may not be passed to emberSendUnicast(). */
     EMBER_OUTGOING_MULTICAST,

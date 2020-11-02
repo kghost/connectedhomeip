@@ -912,10 +912,9 @@ uint8_t emberAfOtaPageRequestServerPolicyCallback(void);
  * This function provides a way for the server to adjust the block size of its
  * response to an Image block request by a client.
  *
- * @param clientNodeId The node Id of OTA client making an image block request.
  * Ver.: always
  */
-uint8_t emberAfOtaServerBlockSizeCallback(EmberNodeId clientNodeId);
+uint8_t emberAfOtaServerBlockSizeCallback(void);
 /** @brief Ota Server Incoming Message Raw
  *
  * This callback is for processing incoming messages for the Over-the-air

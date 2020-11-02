@@ -25,14 +25,14 @@
 #include <inet/IPAddress.h>
 #include <inet/InetError.h>
 #include <inet/InetLayer.h>
+#include <messaging/ExchangeContext.h>
+#include <messaging/ExchangeMgr.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <support/CodeUtils.h>
 #include <support/ErrorStr.h>
 #include <support/logging/CHIPLogging.h>
 #include <sys/param.h>
 #include <system/SystemPacketBuffer.h>
-#include <transport/SecureSessionMgr.h>
-#include <transport/raw/UDP.h>
 
 using namespace ::chip;
 using namespace ::chip::Inet;
@@ -45,26 +45,21 @@ using namespace ::chip::DeviceLayer;
 
 namespace {
 
-class ServerCallback : public SecureSessionMgrDelegate
+class ServerCallback : public ExchangeContextDelegate
 {
 public:
-    void OnMessageReceived(const PacketHeader & header, const PayloadHeader & payloadHeader, Transport::PeerConnectionState * state,
-                           System::PacketBuffer * buffer, SecureSessionMgrBase * mgr) override
+    void OnMessageReceived(ExchangeContext * ec, const PacketHeader & packetHeader, uint32_t protocolId, uint8_t msgType, System::PacketBuffer * buffer) override
     {
         const size_t data_len = buffer->DataLength();
-        char src_addr[PeerAddress::kMaxToStringSize];
 
         // as soon as a client connects, assume it is connected
         VerifyOrExit(buffer != NULL, ChipLogProgress(AppServer, "Received data but couldn't process it..."));
-        VerifyOrExit(header.GetSourceNodeId().HasValue(), ChipLogProgress(AppServer, "Unknown source for received message"));
 
-        VerifyOrExit(state->GetPeerNodeId() != kUndefinedNodeId, ChipLogProgress(AppServer, "Unknown source for received message"));
+        VerifyOrExit(ec->GetPeerNodeId() != kUndefinedNodeId, ChipLogProgress(AppServer, "Unknown source for received message"));
 
-        state->GetPeerAddress().ToString(src_addr, sizeof(src_addr));
+        ChipLogProgress(AppServer, "Packet received from exchange %p: %zu bytes", ec, static_cast<size_t>(data_len));
 
-        ChipLogProgress(AppServer, "Packet received from %s: %zu bytes", src_addr, static_cast<size_t>(data_len));
-
-        HandleDataModelMessage(header, buffer, mgr);
+        HandleDataModelMessage(ec, packetHeader, buffer);
         buffer = NULL;
 
     exit:
@@ -76,13 +71,14 @@ public:
         }
     }
 
-    void OnNewConnection(Transport::PeerConnectionState * state, SecureSessionMgrBase * mgr) override
+    void OnResponseTimeout(ExchangeContext * ec) override
     {
-        ChipLogProgress(AppServer, "Received a new connection.");
+        ChipLogProgress(AppServer, "Exchange %p timeout.", ec);
     }
 };
 
 DemoSessionManager gSessions;
+ExchangeManager gExchangeManager;
 ServerCallback gCallbacks;
 SecurePairingUsingTestSecret gTestPairing;
 RendezvousServer gRendezvousServer;
@@ -125,7 +121,9 @@ void InitServer()
     err = gSessions.NewPairing(peer, &gTestPairing);
     SuccessOrExit(err);
 
-    gSessions.SetDelegate(&gCallbacks);
+    gExchangeManager.Init(&gSessions);
+    gSessions.SetDelegate(&gExchangeManager);
+    gExchangeManager.RegisterUnsolicitedMessageHandler(Protocols::kProtocol_InteractionModel, 0, &gCallbacks);
 
 exit:
     if (err != CHIP_NO_ERROR)

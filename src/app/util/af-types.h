@@ -450,7 +450,7 @@ typedef struct
      */
     EmberApsFrame * apsFrame;
     EmberIncomingMessageType type;
-    ChipNodeId source;
+    void * exchangeContext;
     uint8_t * buffer;
     uint16_t bufLen;
     bool clusterSpecific;
@@ -1485,8 +1485,8 @@ typedef struct
 {
     EmberAfMessageSentFunction callback;
     EmberApsFrame * apsFrame;
+    void * exchangeContext;
     uint8_t * message;
-    uint64_t indexOrDestination;
     uint16_t messageLength;
     EmberOutgoingMessageType type;
     bool broadcast;

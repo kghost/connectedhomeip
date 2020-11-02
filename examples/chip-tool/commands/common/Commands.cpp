@@ -51,6 +51,9 @@ int Commands::Run(NodeId localId, NodeId remoteId, int argc, char ** argv)
         err = dc.Init(localId);
         VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure: %s", chip::ErrorStr(err)));
 
+        err = dc.SetUdpListenPort(11094);
+        VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "SetListenPort failure: %s", chip::ErrorStr(err)));
+
         err = dc.ServiceEvents();
         VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init Run Loop failure: %s", chip::ErrorStr(err)));
 

@@ -53,9 +53,9 @@
 // receives multiple ZCL messages, the stack will queue these and hand
 // these to the application via emberIncomingMsgHandler one at a time.
 EmberApsFrame emberAfResponseApsFrame;
-ChipNodeId emberAfResponseDestination;
 uint8_t appResponseData[EMBER_AF_RESPONSE_BUFFER_LEN];
 uint16_t appResponseLength;
+void * emberAfResponseExchangeContext;
 
 // Used for empty string
 static uint16_t zeroLenByte     = 0;
@@ -68,12 +68,10 @@ static uint8_t * zeroLenBytePtr = (uint8_t *) &zeroLenByte;
 void emberAfClearResponseData(void)
 {
     emberAfResponseType = ZCL_UTIL_RESP_NORMAL;
-    // To prevent accidentally sending to someone else,
-    // set the destination to ourselves.
-    emberAfResponseDestination = 0 /* emberAfGetNodeId() */;
     memset(appResponseData, 0, EMBER_AF_RESPONSE_BUFFER_LEN);
     appResponseLength = 0;
     memset(&emberAfResponseApsFrame, 0, sizeof(EmberApsFrame));
+    emberAfResponseExchangeContext = nullptr;
 }
 
 uint8_t * emberAfPutInt8uInResp(uint8_t value)

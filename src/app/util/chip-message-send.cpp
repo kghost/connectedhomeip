@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <inet/InetLayer.h> // PacketBuffer and the like
+#include <messaging/ExchangeContext.h>
 #include <support/logging/CHIPLogging.h>
 #include <transport/SecureSessionMgr.h> // For SecureSessionMgrBase
 
@@ -40,8 +41,9 @@ extern SecureSessionMgrBase & SessionManager();
 
 extern "C" {
 
-EmberStatus chipSendUnicast(NodeId destination, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message)
+EmberStatus chipSendUnicast(void * exchangeContext, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message)
 {
+    chip::ExchangeContext * ec = reinterpret_cast<chip::ExchangeContext*>(exchangeContext);
     uint16_t frameSize  = encodeApsFrame(nullptr, 0, apsFrame);
     uint32_t dataLength = uint32_t(frameSize) + uint32_t(messageLength);
     if (dataLength > UINT16_MAX)
@@ -75,7 +77,7 @@ EmberStatus chipSendUnicast(NodeId destination, EmberApsFrame * apsFrame, uint16
     memcpy(buffer->Start() + frameSize, message, messageLength);
     buffer->SetDataLength(dataLength);
 
-    CHIP_ERROR err = SessionManager().SendMessage(destination, buffer);
+    CHIP_ERROR err = ec->SendMessage(0 /* TODO: ZCL protocol ID */, 0 /* TODO: ZCL msg type */, buffer);
     if (err != CHIP_NO_ERROR)
     {
         // FIXME: Figure out better translations between our error types?

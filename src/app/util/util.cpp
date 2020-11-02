@@ -235,7 +235,7 @@ static void prepareForResponse(const EmberAfClusterCommand * cmd)
 
     if (cmd->interPanHeader == NULL)
     {
-        emberAfResponseDestination = cmd->source;
+        emberAfResponseExchangeContext = cmd->exchangeContext;
         emberAfResponseType &= ~ZCL_UTIL_RESP_INTERPAN;
     }
     else
@@ -456,7 +456,7 @@ static bool dispatchZclMessage(EmberAfClusterCommand * cmd)
 }
 
 bool emberAfProcessMessageIntoZclCmd(EmberApsFrame * apsFrame, EmberIncomingMessageType type, uint8_t * message,
-                                     uint16_t messageLength, ChipNodeId source, InterPanHeader * interPanHeader,
+                                     uint16_t messageLength, void * exchangeContext, InterPanHeader * interPanHeader,
                                      EmberAfClusterCommand * returnCmd)
 {
     uint8_t minLength =
@@ -471,7 +471,7 @@ bool emberAfProcessMessageIntoZclCmd(EmberApsFrame * apsFrame, EmberIncomingMess
     // Populate the cluster command struct for processing.
     returnCmd->apsFrame        = apsFrame;
     returnCmd->type            = type;
-    returnCmd->source          = source;
+    returnCmd->exchangeContext = exchangeContext;
     returnCmd->buffer          = message;
     returnCmd->bufLen          = messageLength;
     returnCmd->clusterSpecific = (message[0] & ZCL_CLUSTER_SPECIFIC_COMMAND);
@@ -502,13 +502,13 @@ bool emberAfProcessMessageIntoZclCmd(EmberApsFrame * apsFrame, EmberIncomingMess
 
 // a single call to process global and cluster-specific messages and callbacks.
 bool emberAfProcessMessage(EmberApsFrame * apsFrame, EmberIncomingMessageType type, uint8_t * message, uint16_t msgLen,
-                           ChipNodeId source, InterPanHeader * interPanHeader)
+                           void * exchangeContext, InterPanHeader * interPanHeader)
 {
     EmberStatus sendStatus;
     bool msgHandled = false;
     // reset/reinitialize curCmd
     curCmd = staticCmd;
-    if (!emberAfProcessMessageIntoZclCmd(apsFrame, type, message, msgLen, source, interPanHeader, &curCmd))
+    if (!emberAfProcessMessageIntoZclCmd(apsFrame, type, message, msgLen, exchangeContext, interPanHeader, &curCmd))
     {
         goto kickout;
     }
@@ -538,7 +538,7 @@ bool emberAfProcessMessage(EmberApsFrame * apsFrame, EmberIncomingMessageType ty
         if (emberAfDetermineIfLinkSecurityIsRequired(curCmd.commandId,
                                                      true, // incoming
                                                      broadcast, curCmd.apsFrame->profileId, curCmd.apsFrame->clusterId,
-                                                     curCmd.source) &&
+                                                     curCmd.exchangeContext) &&
             (!(curCmd.apsFrame->options & EMBER_APS_OPTION_ENCRYPTION)))
         {
             emberAfDebugPrintln("Drop clus %2x due to no aps security", curCmd.apsFrame->clusterId);
@@ -699,12 +699,6 @@ void emAfApplyDisableDefaultResponse(uint8_t * frame_control)
     }
 }
 
-static bool isBroadcastDestination(ChipNodeId responseDestination)
-{
-    // FIXME: Will need to actually figure out how to test for this!
-    return false;
-}
-
 EmberStatus emberAfSendResponseWithCallback(EmberAfMessageSentFunction callback)
 {
     EmberStatus status;
@@ -752,25 +746,13 @@ EmberStatus emberAfSendResponseWithCallback(EmberAfMessageSentFunction callback)
         status = emberAfInterpanSendMessageCallback(&interpanResponseHeader, appResponseLength, appResponseData);
         emberAfResponseType &= ~ZCL_UTIL_RESP_INTERPAN;
     }
-    else if (!isBroadcastDestination(emberAfResponseDestination))
-    {
-        label  = 'U';
-        status = emberAfSendUnicastWithCallback(EMBER_OUTGOING_DIRECT, emberAfResponseDestination, &emberAfResponseApsFrame,
-                                                appResponseLength, appResponseData, callback);
-    }
     else
     {
-        label = 'B';
-#if 0
-    status = emberAfSendBroadcastWithCallback(emberAfResponseDestination,
-                                              &emberAfResponseApsFrame,
-                                              appResponseLength,
-                                              appResponseData,
-                                              callback);
-#else
-        status = EMBER_SUCCESS;
-#endif
+        label  = 'U';
+        status = emberAfSendUnicastWithCallback(EMBER_OUTGOING_DIRECT, emberAfResponseExchangeContext, &emberAfResponseApsFrame,
+                                                appResponseLength, appResponseData, callback);
     }
+
     UNUSED_VAR(label);
     emberAfDebugPrintln("T%4x:TX (%p) %ccast 0x%x%p", 0, "resp", label, status,
                         ((emberAfResponseApsFrame.options & EMBER_APS_OPTION_ENCRYPTION) ? " w/ link key" : ""));
@@ -859,7 +841,7 @@ EmberStatus emberAfSendDefaultResponse(const EmberAfClusterCommand * cmd, EmberA
 }
 
 bool emberAfDetermineIfLinkSecurityIsRequired(uint8_t commandId, bool incoming, bool broadcast, EmberAfProfileId profileId,
-                                              EmberAfClusterId clusterId, ChipNodeId remoteNodeId)
+                                              EmberAfClusterId clusterId, void * exchangeContext)
 {
     (void) afNoSecurityForDefaultResponse; // remove warning if not used
 
@@ -909,7 +891,7 @@ bool emberAfDetermineIfLinkSecurityIsRequired(uint8_t commandId, bool incoming, 
         }
 
         // Loopback packets do not require security
-        if (emberGetNodeId() == remoteNodeId)
+        if (emberGetNodeId() == reinterpret_cast<chip::ExchangeContext*>(exchangeContext)->GetPeerNodeId())
         {
             return false;
         }
@@ -963,7 +945,7 @@ bool emberAfDetermineIfLinkSecurityIsRequired(uint8_t commandId, bool incoming, 
     return false;
 }
 
-uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, uint64_t indexOrDestination, EmberApsFrame * apsFrame)
+uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, EmberApsFrame * apsFrame)
 {
     EmberNodeId destination = EMBER_UNKNOWN_NODE_ID;
     uint8_t max             = EMBER_AF_MAXIMUM_APS_PAYLOAD_LENGTH;
@@ -988,13 +970,9 @@ uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, uint64_t i
     switch (type)
     {
     case EMBER_OUTGOING_DIRECT:
-        destination = indexOrDestination;
         break;
     case EMBER_OUTGOING_VIA_ADDRESS_TABLE:
         // destination = emberGetAddressTableRemoteNodeId(indexOrDestination);
-        break;
-    case EMBER_OUTGOING_VIA_BINDING:
-        // destination = emberGetBindingRemoteNodeId(indexOrDestination);
         break;
     case EMBER_OUTGOING_MULTICAST:
         // APS multicast messages include the two-byte group id and exclude the
@@ -1008,7 +986,7 @@ uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, uint64_t i
         break;
     }
 
-    max -= emberAfGetSourceRouteOverheadCallback(destination);
+    //max -= emberAfGetSourceRouteOverheadCallback();
 
     return max;
 }

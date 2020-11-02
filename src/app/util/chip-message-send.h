@@ -42,7 +42,7 @@
 extern "C" {
 #endif // __cplusplus
 
-EmberStatus chipSendUnicast(ChipNodeId destination, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message);
+EmberStatus chipSendUnicast(void * exchangeContext, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message);
 
 #ifdef __cplusplus
 } // extern "C"

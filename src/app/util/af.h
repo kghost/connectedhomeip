@@ -1294,60 +1294,15 @@ EmberStatus emberAfSendResponse(void);
 EmberStatus emberAfSendResponseWithCallback(EmberAfMessageSentFunction callback);
 
 /**
- * @brief Sends multicast.
- */
-EmberStatus emberAfSendMulticast(EmberMulticastId multicastId, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message);
-
-/**
- * @brief Multicasts the message to the group in the binding table that
- * matches the cluster and source endpoint in the APS frame.  Note: if the
- * binding table contains many matching entries, calling this API cause a
- * significant amount of network traffic. Care should be taken when considering
- * the effects of broadcasts in a network.
- */
-EmberStatus emberAfSendMulticastToBindings(EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message);
-
-/**
- * @brief Sends Multicast with alias with attached message sent callback
- */
-EmberStatus emberAfSendMulticastWithAliasWithCallback(EmberMulticastId multicastId, EmberApsFrame * apsFrame,
-                                                      uint16_t messageLength, uint8_t * message, EmberNodeId alias,
-                                                      uint8_t sequence, EmberAfMessageSentFunction callback);
-
-/**
- * @brief Sends multicast with attached message sent callback.
- */
-EmberStatus emberAfSendMulticastWithCallback(EmberMulticastId multicastId, EmberApsFrame * apsFrame, uint16_t messageLength,
-                                             uint8_t * message, EmberAfMessageSentFunction callback);
-
-/**
- * @brief Sends broadcast.
- */
-EmberStatus emberAfSendBroadcast(EmberNodeId destination, EmberApsFrame * apsFrame, uint16_t messageLength, uint8_t * message);
-
-/**
- * @brief Sends broadcast with attached message sent callback.
- */
-EmberStatus emberAfSendBroadcastWithCallback(EmberNodeId destination, EmberApsFrame * apsFrame, uint16_t messageLength,
-                                             uint8_t * message, EmberAfMessageSentFunction callback);
-
-/**
- * @brief Sends broadcast with alias with attached message sent callback.
- */
-EmberStatus emberAfSendBroadcastWithAliasWithCallback(EmberNodeId destination, EmberApsFrame * apsFrame, uint16_t messageLength,
-                                                      uint8_t * message, EmberNodeId alias, uint8_t sequence,
-                                                      EmberAfMessageSentFunction callback);
-
-/**
  * @brief Sends unicast.
  */
-EmberStatus emberAfSendUnicast(EmberOutgoingMessageType type, uint64_t indexOrDestination, EmberApsFrame * apsFrame,
+EmberStatus emberAfSendUnicast(EmberOutgoingMessageType type, void * exchangeContext, EmberApsFrame * apsFrame,
                                uint16_t messageLength, uint8_t * message);
 
 /**
  * @brief Sends unicast with attached message sent callback.
  */
-EmberStatus emberAfSendUnicastWithCallback(EmberOutgoingMessageType type, uint64_t indexOrDestination, EmberApsFrame * apsFrame,
+EmberStatus emberAfSendUnicastWithCallback(EmberOutgoingMessageType type, void * exchangeContext, EmberApsFrame * apsFrame,
                                            uint16_t messageLength, uint8_t * message, EmberAfMessageSentFunction callback);
 
 /**
@@ -1534,7 +1489,7 @@ EmberStatus emberAfSendImmediateDefaultResponseWithCallback(EmberAfStatus status
  * @param apsFrame The APS frame for the message.
  * @return The maximum APS payload length for the given message.
  */
-uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, uint64_t indexOrDestination, EmberApsFrame * apsFrame);
+uint8_t emberAfMaximumApsPayloadLength(EmberOutgoingMessageType type, EmberApsFrame * apsFrame);
 
 /**
  * @brief Access to client API APS frame.

@@ -1224,10 +1224,9 @@ uint8_t emberAfOtaPageRequestServerPolicyCallback(void)
  * This function provides a way for the server to adjust the block size of its
  * response to an Image block request by a client.
  *
- * @param clientNodeId The node Id of OTA client making an image block request.
  * Ver.: always
  */
-uint8_t emberAfOtaServerBlockSizeCallback(EmberNodeId clientNodeId)
+uint8_t emberAfOtaServerBlockSizeCallback(void)
 {
     // This function provides a way for the server to potentially
     // adjust the block size based on the client who is requesting.
@@ -1253,7 +1252,7 @@ uint8_t emberAfOtaServerBlockSizeCallback(EmberNodeId clientNodeId)
         apsFrame.options |= EMBER_APS_OPTION_ENCRYPTION;
     }
 
-    maxSize = emberAfMaximumApsPayloadLength(EMBER_OUTGOING_DIRECT, clientNodeId, &apsFrame);
+    maxSize = emberAfMaximumApsPayloadLength(EMBER_OUTGOING_DIRECT, &apsFrame);
     maxSize -= IMAGE_BLOCK_RESPONSE_OVERHEAD;
     return maxSize;
 }

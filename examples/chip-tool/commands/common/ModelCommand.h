@@ -64,6 +64,8 @@ private:
     void WaitForResponse(void);
     void PrintBuffer(chip::System::PacketBuffer * buffer) const;
 
+    chip::ExchangeContext * mExchangeContext;
+
     std::condition_variable cvWaitingForResponse;
     std::mutex cvWaitingForResponseMutex;
     bool mWaitingForResponse{ false };

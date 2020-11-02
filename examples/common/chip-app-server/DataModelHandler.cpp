@@ -42,7 +42,7 @@ extern "C" {
  * @param [in] buffer The buffer holding the message.  This function guarantees
  *                    that it will free the buffer before returning.
  */
-void HandleDataModelMessage(const PacketHeader & header, System::PacketBuffer * buffer, SecureSessionMgrBase * mgr)
+void HandleDataModelMessage(void * exchangeContext, const PacketHeader & header, System::PacketBuffer * buffer)
 {
     EmberApsFrame frame;
     bool ok = extractApsFrame(buffer->Start(), buffer->DataLength(), &frame) > 0;
@@ -62,7 +62,7 @@ void HandleDataModelMessage(const PacketHeader & header, System::PacketBuffer * 
     ok                  = emberAfProcessMessage(&frame,
                                0, // type
                                message, messageLen,
-                               header.GetSourceNodeId().Value(), // source identifier
+                               exchangeContext,
                                NULL);
 
     System::PacketBuffer::Free(buffer);
