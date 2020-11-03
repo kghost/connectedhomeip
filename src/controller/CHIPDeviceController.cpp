@@ -87,6 +87,7 @@ ChipDeviceController::ChipDeviceController()
     mConState          = kConnectionState_NotConnected;
     mRendezvousSession = nullptr;
     mSessionManager    = nullptr;
+    mExchangeManager   = nullptr;
     mCurReqMsg         = nullptr;
     mOnError           = nullptr;
     mOnNewConnection   = nullptr;
@@ -180,6 +181,12 @@ CHIP_ERROR ChipDeviceController::Shutdown()
         mSessionManager = nullptr;
     }
 
+    if (mExchangeManager != nullptr)
+    {
+        chip::Platform::Delete(mExchangeManager);
+        mExchangeManager = nullptr;
+    }
+
     if (mRendezvousSession != nullptr)
     {
         chip::Platform::Delete(mRendezvousSession);
@@ -228,6 +235,10 @@ CHIP_ERROR ChipDeviceController::ConnectDevice(NodeId remoteDeviceId, Rendezvous
     mOnComplete.Response = onMessageReceived;
     mOnError             = onError;
 
+    // pretend we are connected
+    err = TryEstablishingSecureSession(remoteDeviceId);
+    SuccessOrExit(err);
+
 exit:
     if (err != CHIP_NO_ERROR && mRendezvousSession != nullptr)
     {
@@ -243,6 +254,7 @@ CHIP_ERROR ChipDeviceController::ConnectDeviceWithoutSecurePairing(NodeId remote
                                                                    MessageReceiveHandler onMessageReceived, ErrorHandler onError,
                                                                    uint16_t devicePort, Inet::InterfaceId interfaceId)
 {
+    CHIP_ERROR err = CHIP_NO_ERROR;
     if (mTestSecurePairingSecret != nullptr)
     {
         chip::Platform::Delete(mTestSecurePairingSecret);
@@ -265,12 +277,17 @@ CHIP_ERROR ChipDeviceController::ConnectDeviceWithoutSecurePairing(NodeId remote
     mOnComplete.Response = onMessageReceived;
     mOnError             = onError;
 
+    // pretend we are connected
+    err = TryEstablishingSecureSession(remoteDeviceId);
+    SuccessOrExit(err);
+
     if (mOnNewConnection)
     {
         mOnNewConnection(this, nullptr, mAppReqState);
     }
 
-    return CHIP_NO_ERROR;
+exit:
+    return err;
 }
 
 CHIP_ERROR ChipDeviceController::SetUdpListenPort(uint16_t listenPort)
@@ -295,7 +312,9 @@ CHIP_ERROR ChipDeviceController::EstablishSecureSession()
         Transport::UdpListenParameters(mInetLayer).SetAddressType(mDeviceAddr.Type()).SetListenPort(mListenPort));
     SuccessOrExit(err);
 
-    mSessionManager->SetDelegate(this);
+    mExchangeManager = chip::Platform::New<ExchangeManager>();
+    err = mExchangeManager->Init(mSessionManager);
+    mSessionManager->SetDelegate(mExchangeManager);
 
     err = mSessionManager->NewPairing(
         Optional<Transport::PeerAddress>::Value(Transport::PeerAddress::UDP(mDeviceAddr, mDevicePort, mInterface)),
@@ -503,71 +522,6 @@ void ChipDeviceController::DiscardCachedPackets()
     CHIP_ZERO_AT(mCachedPackets);
 }
 
-CHIP_ERROR ChipDeviceController::SendMessage(void * appReqState, PacketBuffer * buffer, NodeId peerDevice)
-{
-    CHIP_ERROR err            = CHIP_NO_ERROR;
-    bool trySessionResumption = true;
-
-    VerifyOrExit(buffer != nullptr, err = CHIP_ERROR_INVALID_ARGUMENT);
-    VerifyOrExit(mState == kState_Initialized, err = CHIP_ERROR_INCORRECT_STATE);
-
-    mAppReqState = appReqState;
-
-    if (peerDevice != kUndefinedNodeId)
-    {
-        mRemoteDeviceId = Optional<NodeId>::Value(peerDevice);
-    }
-    VerifyOrExit(mRemoteDeviceId.HasValue(), err = CHIP_ERROR_INCORRECT_STATE);
-
-    // If there is no secure connection to the device, try establishing it
-    if (!IsSecurelyConnected())
-    {
-        err = TryEstablishingSecureSession(mRemoteDeviceId.Value());
-        SuccessOrExit(err);
-
-        trySessionResumption = false;
-
-        if (mConState == kConnectionState_SecureConnecting)
-        {
-            // Cache the packet while connection is being established
-            ExitNow(err = CachePacket(buffer));
-        }
-    }
-
-    // Hold on to the buffer, in case of session resumption and resend is needed
-    buffer->AddRef();
-
-    err = mSessionManager->SendMessage(mRemoteDeviceId.Value(), buffer);
-    ChipLogDetail(Controller, "SendMessage returned %d", err);
-
-    // The send could fail due to network timeouts (e.g. broken pipe)
-    // Try sesion resumption if needed
-    if (err != CHIP_NO_ERROR && trySessionResumption)
-    {
-        err = ResumeSecureSession(mRemoteDeviceId.Value());
-        // If session resumption failed, let's free the extra reference to
-        // the buffer. If not, SendMessage would free it.
-        VerifyOrExit(err == CHIP_NO_ERROR, PacketBuffer::Free(buffer));
-
-        if (mConState == kConnectionState_SecureConnecting)
-        {
-            // Cache the packet while connection is being established
-            ExitNow(err = CachePacket(buffer));
-        }
-
-        err = mSessionManager->SendMessage(mRemoteDeviceId.Value(), buffer);
-        SuccessOrExit(err);
-    }
-    else
-    {
-        // Free the extra reference to the buffer
-        PacketBuffer::Free(buffer);
-    }
-
-exit:
-
-    return err;
-}
 
 CHIP_ERROR ChipDeviceController::ServiceEvents()
 {
@@ -612,30 +566,6 @@ void ChipDeviceController::ClearRequestState()
     {
         PacketBuffer::Free(mCurReqMsg);
         mCurReqMsg = nullptr;
-    }
-}
-
-void ChipDeviceController::OnNewConnection(Transport::PeerConnectionState * state, SecureSessionMgrBase * mgr) {}
-
-void ChipDeviceController::OnMessageReceived(const PacketHeader & header, const PayloadHeader & payloadHeader,
-                                             Transport::PeerConnectionState * state, System::PacketBuffer * msgBuf,
-                                             SecureSessionMgrBase * mgr)
-{
-    if (header.GetSourceNodeId().HasValue())
-    {
-        if (!mRemoteDeviceId.HasValue())
-        {
-            ChipLogDetail(Controller, "Learned remote device id");
-            mRemoteDeviceId = header.GetSourceNodeId();
-        }
-        else if (mRemoteDeviceId != header.GetSourceNodeId())
-        {
-            ChipLogError(Controller, "Received message from an unexpected source node id.");
-        }
-    }
-    if (IsSecurelyConnected() && mOnComplete.Response != nullptr)
-    {
-        mOnComplete.Response(this, mAppReqState, msgBuf);
     }
 }
 

@@ -46,11 +46,22 @@ bool isGlobalCommand(uint8_t frameControl)
 
 void ModelCommand::OnConnect(ChipDeviceController * dc)
 {
+    mExchangeContext = dc->GetExchangeManager()->NewContext(mRemoteId, this);
+    if (mExchangeContext == nullptr)
+    {
+        ChipLogError(chipTool, "Alloc ExchangeContext failure!");
+        ExitNow();
+    }
+
     if (SendCommand(dc))
     {
         UpdateWaitForResponse(true);
         WaitForResponse();
     }
+
+    mExchangeContext->Release();
+exit:
+    return;
 }
 
 void ModelCommand::OnError(ChipDeviceController * dc, CHIP_ERROR err)
@@ -60,13 +71,26 @@ void ModelCommand::OnError(ChipDeviceController * dc, CHIP_ERROR err)
 
 void ModelCommand::OnMessage(ChipDeviceController * dc, PacketBuffer * buffer)
 {
-    SetCommandExitStatus(ReceiveCommandResponse(dc, buffer));
+    SetCommandExitStatus(ReceiveCommandResponse(buffer));
     UpdateWaitForResponse(false);
+}
+
+void ModelCommand::OnMessageReceived(chip::ExchangeContext * ec, const chip::PacketHeader & packetHeader, uint32_t protocolId, uint8_t msgType, chip::System::PacketBuffer * payload)
+{
+    SetCommandExitStatus(ReceiveCommandResponse(payload));
+    UpdateWaitForResponse(false);
+}
+
+void ModelCommand::OnResponseTimeout(chip::ExchangeContext * ec)
+{
+    ChipLogError(chipTool, "Exchange %p timeout.", ec);
 }
 
 CHIP_ERROR ModelCommand::Run(ChipDeviceController * dc, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+
+    mRemoteId = remoteId;
 
     err = NetworkCommand::Run(dc, remoteId);
     SuccessOrExit(err);
@@ -82,6 +106,8 @@ exit:
 
 bool ModelCommand::SendCommand(ChipDeviceController * dc)
 {
+    if (mExchangeContext == nullptr) return false;
+
     // Make sure our buffer is big enough, but this will need a better setup!
     static const uint16_t bufferSize = 1024;
     auto * buffer                    = PacketBuffer::NewWithAvailableSize(bufferSize);
@@ -110,11 +136,11 @@ bool ModelCommand::SendCommand(ChipDeviceController * dc)
     PrintBuffer(buffer);
 #endif
 
-    dc->SendMessage(NULL, buffer);
+    mExchangeContext->SendMessage(Protocols::kProtocol_InteractionModel, 0, buffer);
     return true;
 }
 
-bool ModelCommand::ReceiveCommandResponse(ChipDeviceController * dc, PacketBuffer * buffer) const
+bool ModelCommand::ReceiveCommandResponse(PacketBuffer * buffer) const
 {
     EmberApsFrame frame;
     uint8_t * message;
