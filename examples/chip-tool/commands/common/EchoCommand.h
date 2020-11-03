@@ -20,7 +20,9 @@
 
 #include "NetworkCommand.h"
 
-class EchoCommand : public NetworkCommand
+#include <messaging/ExchangeContext.h>
+
+class EchoCommand : public NetworkCommand, public chip::ExchangeContextDelegate
 {
 public:
     EchoCommand(const char * name, NetworkType type) : NetworkCommand(name, type) {}
@@ -33,8 +35,11 @@ public:
     void OnMessage(ChipDeviceController * dc, chip::System::PacketBuffer * buffer) override { ReceiveEcho(buffer); }
     void OnError(ChipDeviceController * dc, CHIP_ERROR err) override { mController = nullptr; }
 
+    void OnMessageReceived(chip::ExchangeContext * ec, const chip::PacketHeader & packetHeader, uint32_t protocolId, uint8_t msgType, chip::System::PacketBuffer * payload) override;
+    void OnResponseTimeout(chip::ExchangeContext * ec) override { }
+
 private:
-    void SendEcho(void) const;
+    void SendEcho(chip::ExchangeContext * ec) const;
     void ReceiveEcho(chip::System::PacketBuffer * buffer) const;
 
     ChipDeviceController * mController = nullptr;

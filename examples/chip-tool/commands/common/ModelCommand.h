@@ -25,13 +25,14 @@
 
 #include <app/chip-zcl-zpro-codec.h>
 #include <core/CHIPEncoding.h>
+#include <messaging/ExchangeContext.h>
 
 // Limits on endpoint values.  Could be wrong, if we start using endpoint 0 for
 // something.
 #define CHIP_ZCL_ENDPOINT_MIN 0x01
 #define CHIP_ZCL_ENDPOINT_MAX 0xF0
 
-class ModelCommand : public NetworkCommand
+class ModelCommand : public NetworkCommand, chip::ExchangeContextDelegate
 {
 public:
     ModelCommand(const char * commandName, uint16_t clusterId, uint8_t commandId) :
@@ -52,18 +53,22 @@ public:
     void OnError(ChipDeviceController * dc, CHIP_ERROR err) override;
     void OnMessage(ChipDeviceController * dc, chip::System::PacketBuffer * buffer) override;
 
+    void OnMessageReceived(chip::ExchangeContext * ec, const chip::PacketHeader & packetHeader, uint32_t protocolId, uint8_t msgType, chip::System::PacketBuffer * payload) override;
+    void OnResponseTimeout(chip::ExchangeContext * ec) override;
+
     virtual uint16_t EncodeCommand(chip::System::PacketBuffer * buffer, uint16_t bufferSize, uint8_t endPointId) = 0;
     virtual bool HandleGlobalResponse(uint8_t commandId, uint8_t * message, uint16_t messageLen) const { return false; }
     virtual bool HandleSpecificResponse(uint8_t commandId, uint8_t * message, uint16_t messageLen) const { return false; }
 
 private:
     bool SendCommand(ChipDeviceController * dc);
-    bool ReceiveCommandResponse(ChipDeviceController * dc, chip::System::PacketBuffer * buffer) const;
+    bool ReceiveCommandResponse(chip::System::PacketBuffer * buffer) const;
 
     void UpdateWaitForResponse(bool value);
     void WaitForResponse(void);
     void PrintBuffer(chip::System::PacketBuffer * buffer) const;
 
+    NodeId mRemoteId;
     chip::ExchangeContext * mExchangeContext;
 
     std::condition_variable cvWaitingForResponse;

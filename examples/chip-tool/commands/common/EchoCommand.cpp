@@ -18,13 +18,15 @@
 
 #include "EchoCommand.h"
 
+#include <messaging/ExchangeContext.h>
+
 using namespace ::chip;
 using namespace ::chip::DeviceController;
 
 #define SEND_DELAY 5
 static const char * PAYLOAD = "Message from Standalone CHIP echo client!";
 
-void EchoCommand::SendEcho() const
+void EchoCommand::SendEcho(ExchangeContext * ec) const
 {
     size_t payloadLen = strlen(PAYLOAD);
     if (payloadLen > UINT16_MAX)
@@ -45,7 +47,7 @@ void EchoCommand::SendEcho() const
     memcpy(buffer->Start(), PAYLOAD, payloadLen);
     buffer->SetDataLength(static_cast<uint16_t>(payloadLen));
 
-    CHIP_ERROR err = mController->SendMessage(NULL, buffer);
+    CHIP_ERROR err = ec->SendMessage(5, 0, buffer);
     if (err == CHIP_NO_ERROR)
     {
         ChipLogProgress(chipTool, "Echo (%s): Message sent to server", GetNetworkName());
@@ -78,20 +80,35 @@ void EchoCommand::ReceiveEcho(PacketBuffer * buffer) const
 CHIP_ERROR EchoCommand::Run(ChipDeviceController * dc, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+    ExchangeManager * em = nullptr;
+    ExchangeContext * ec = nullptr;
 
     err = NetworkCommand::Run(dc, remoteId);
     SuccessOrExit(err);
+
+    em = dc->GetExchangeManager();
+    VerifyOrExit(em != nullptr, err = CHIP_ERROR_NO_MEMORY);
+
+    ec = em->NewContext(remoteId, this);
+    VerifyOrExit(ec != nullptr, err = CHIP_ERROR_NO_MEMORY);
 
     // Run command until the user exits the process
     while (1)
     {
         if (mController != nullptr)
         {
-            SendEcho();
+            SendEcho(ec);
         }
         sleep(SEND_DELAY);
     }
 
 exit:
+    if (ec != nullptr) ec->Close();
+
     return err;
+}
+
+void EchoCommand::OnMessageReceived(ExchangeContext * ec, const PacketHeader & packetHeader, uint32_t protocolId, uint8_t msgType, System::PacketBuffer * payload)
+{
+    ReceiveEcho(payload);
 }

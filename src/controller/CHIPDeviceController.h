@@ -31,6 +31,7 @@
 #include <controller/CHIPPersistentStorageDelegate.h>
 #include <core/CHIPCore.h>
 #include <core/CHIPTLV.h>
+#include <messaging/ExchangeMgr.h>
 #include <support/DLLUtil.h>
 #include <transport/RendezvousSession.h>
 #include <transport/RendezvousSessionDelegate.h>
@@ -100,9 +101,7 @@ public:
     virtual void OnPairingDeleted(CHIP_ERROR error) {}
 };
 
-class DLL_EXPORT ChipDeviceController : public SecureSessionMgrDelegate,
-                                        public RendezvousSessionDelegate,
-                                        public PersistentStorageResultDelegate
+class DLL_EXPORT ChipDeviceController : public RendezvousSessionDelegate, public PersistentStorageResultDelegate
 {
     friend class ChipDeviceControllerCallback;
 
@@ -201,16 +200,7 @@ public:
     bool GetIpAddress(Inet::IPAddress & addr) const;
 
     // ----- Messaging -----
-    /**
-     * @brief
-     *   Send a message to a connected CHIP device
-     *
-     * @param[in] appReqState   Application specific context to be passed back when a message is received or on error
-     * @param[in] buffer        The Data Buffer to trasmit to the device
-     * @param[in] peerDevice    Device ID of the peer device
-     * @return CHIP_ERROR   The return status
-     */
-    CHIP_ERROR SendMessage(void * appReqState, System::PacketBuffer * buffer, NodeId peerDevice = kUndefinedNodeId);
+    ExchangeManager * GetExchangeManager() { return mExchangeManager; }
 
     // ----- IO -----
     /**
@@ -235,11 +225,6 @@ public:
      * @return CHIP_ERROR   The return status
      */
     CHIP_ERROR ServiceEventSignal();
-
-    void OnMessageReceived(const PacketHeader & header, const PayloadHeader & payloadHeader, Transport::PeerConnectionState * state,
-                           System::PacketBuffer * msgBuf, SecureSessionMgrBase * mgr) override;
-
-    void OnNewConnection(Transport::PeerConnectionState * state, SecureSessionMgrBase * mgr) override;
 
     //////////// RendezvousSessionDelegate Implementation ///////////////
     void OnRendezvousError(CHIP_ERROR err) override;
@@ -270,6 +255,7 @@ private:
 
     SecureSessionMgr<Transport::UDP> * mSessionManager;
     RendezvousSession * mRendezvousSession;
+    ExchangeManager * mExchangeManager;
 
     ConnectionState mConState;
     void * mAppReqState;
