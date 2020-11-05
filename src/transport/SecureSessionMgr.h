@@ -93,6 +93,12 @@ public:
 class DLL_EXPORT SecureSessionMgrBase
 {
 public:
+    enum SendFlagValues : uint16_t {
+        kSendFlag_KeepBuffer = 0x0001, /**< Do not modify the message buffer. Acquire a copy when passing to under layer */
+    };
+
+    using SendFlags = BitFlags<uint16_t, SendFlagValues>;
+
     /**
      * @brief
      *   Send a message to a currently connected peer
@@ -101,8 +107,8 @@ public:
      *   This method calls <tt>chip::System::PacketBuffer::Free</tt> on
      *   behalf of the caller regardless of the return status.
      */
-    CHIP_ERROR SendMessage(NodeId peerNodeId, System::PacketBuffer * msgBuf);
-    CHIP_ERROR SendMessage(PayloadHeader & payloadHeader, NodeId peerNodeId, System::PacketBuffer * msgBuf);
+    CHIP_ERROR SendMessage(NodeId peerNodeId, System::PacketBuffer * msgBuf, SendFlags sendFlags = {});
+    CHIP_ERROR SendMessage(PayloadHeader & payloadHeader, NodeId peerNodeId, System::PacketBuffer * msgBuf, SendFlags = {});
     SecureSessionMgrBase();
     virtual ~SecureSessionMgrBase();
 

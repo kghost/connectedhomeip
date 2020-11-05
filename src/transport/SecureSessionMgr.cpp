@@ -24,6 +24,8 @@
  *
  */
 
+#include <memory>
+
 #include <string.h>
 #include <support/CodeUtils.h>
 #include <support/SafeInt.h>
@@ -72,32 +74,35 @@ exit:
     return err;
 }
 
-CHIP_ERROR SecureSessionMgrBase::SendMessage(NodeId peerNodeId, System::PacketBuffer * msgBuf)
+CHIP_ERROR SecureSessionMgrBase::SendMessage(NodeId peerNodeId, System::PacketBuffer * msgBuf, SendFlags sendFlags)
 {
     PayloadHeader payloadHeader;
 
-    return SendMessage(payloadHeader, peerNodeId, msgBuf);
+    return SendMessage(payloadHeader, peerNodeId, msgBuf, sendFlags);
 }
 
-CHIP_ERROR SecureSessionMgrBase::SendMessage(PayloadHeader & payloadHeader, NodeId peerNodeId, System::PacketBuffer * msgBuf)
+CHIP_ERROR SecureSessionMgrBase::SendMessage(PayloadHeader & payloadHeader, NodeId peerNodeId, System::PacketBuffer * rawMsgBuf, SendFlags sendFlags)
 {
-    CHIP_ERROR err              = CHIP_NO_ERROR;
-    PeerConnectionState * state = nullptr;
+    CHIP_ERROR err                = CHIP_NO_ERROR;
+    PeerConnectionState * state   = nullptr;
+    std::unique_ptr<System::PacketBuffer, decltype(&PacketBuffer::Free)> msgBuf(rawMsgBuf, &PacketBuffer::Free);
 
     VerifyOrExit(mState == State::kInitialized, err = CHIP_ERROR_INCORRECT_STATE);
 
-    VerifyOrExit(msgBuf != nullptr, err = CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrExit(msgBuf, err = CHIP_ERROR_INVALID_ARGUMENT);
     VerifyOrExit(msgBuf->Next() == nullptr, err = CHIP_ERROR_INVALID_MESSAGE_LENGTH);
     VerifyOrExit(msgBuf->TotalLength() < kMax_SecureSDU_Length, err = CHIP_ERROR_INVALID_MESSAGE_LENGTH);
 
     // Find an active connection to the specified peer node
-    VerifyOrExit(mPeerConnections.FindPeerConnectionState(peerNodeId, &state), err = CHIP_ERROR_INVALID_DESTINATION_NODE_ID);
+    VerifyOrExit(mPeerConnections.FindPeerConnectionState(peerNodeId, &state), {
+        err = CHIP_ERROR_INVALID_DESTINATION_NODE_ID;
+        ChipLogError(Inet, "Secure transport could not find a valid PeerConnection: %s", ErrorStr(err));
+    });
 
     // This marks any connection where we send data to as 'active'
     mPeerConnections.MarkConnectionActive(state);
 
     {
-        uint8_t * data = nullptr;
         PacketHeader packetHeader;
         MessageAuthenticationCode mac;
 
@@ -119,28 +124,59 @@ CHIP_ERROR SecureSessionMgrBase::SendMessage(PayloadHeader & payloadHeader, Node
             .SetEncryptionKeyID(state->GetLocalKeyID()) //
             .SetPayloadLength(static_cast<uint16_t>(payloadLength));
 
-        VerifyOrExit(msgBuf->EnsureReservedSize(headerSize), err = CHIP_ERROR_NO_MEMORY);
+        totalLen = msgBuf->TotalLength() + headerSize;
 
-        msgBuf->SetStart(msgBuf->Start() - headerSize);
-        data     = msgBuf->Start();
-        totalLen = msgBuf->TotalLength();
+        if (sendFlags.Has(kSendFlag_KeepBuffer))
+        {
+            std::unique_ptr<System::PacketBuffer, decltype(&PacketBuffer::Free)> outBuf(System::PacketBuffer::NewWithAvailableSize(totalLen), &PacketBuffer::Free);
+            VerifyOrExit(outBuf != nullptr, err = CHIP_ERROR_NO_MEMORY);
 
-        err = payloadHeader.Encode(data, totalLen, &actualEncodedHeaderSize);
-        SuccessOrExit(err);
+            err = payloadHeader.Encode(outBuf->Start(), totalLen, &actualEncodedHeaderSize);
+            SuccessOrExit(err);
 
-        err = state->GetSecureSession().Encrypt(data, totalLen, data, packetHeader, payloadHeader.GetEncodePacketFlags(), mac);
-        SuccessOrExit(err);
+            memcpy(outBuf->Start() + headerSize, msgBuf->Start(), msgBuf->TotalLength());
 
-        err = mac.Encode(packetHeader, &data[totalLen], kMaxTagLen, &taglen);
-        SuccessOrExit(err);
+            err = state->GetSecureSession().Encrypt(outBuf->Start(), totalLen, outBuf->Start(), packetHeader, payloadHeader.GetEncodePacketFlags(), mac);
+            SuccessOrExit(err);
 
-        VerifyOrExit(CanCastTo<uint16_t>(totalLen + taglen), err = CHIP_ERROR_INTERNAL);
-        msgBuf->SetDataLength(static_cast<uint16_t>(totalLen + taglen), nullptr);
+            VerifyOrExit(mac.TagLenForEncryptionType(packetHeader.GetEncryptionType()) <= outBuf->AvailableDataLength(), err = CHIP_ERROR_NO_MEMORY);
 
-        ChipLogDetail(Inet, "Secure transport transmitting msg %u after encryption", state->GetSendMessageIndex());
+            err = mac.Encode(packetHeader, outBuf->Start() + totalLen, kMaxTagLen, &taglen);
+            SuccessOrExit(err);
 
-        err    = mTransport->SendMessage(packetHeader, payloadHeader.GetEncodePacketFlags(), state->GetPeerAddress(), msgBuf);
-        msgBuf = nullptr;
+            VerifyOrExit(CanCastTo<uint16_t>(totalLen + taglen), err = CHIP_ERROR_INTERNAL);
+            outBuf->SetDataLength(static_cast<uint16_t>(totalLen + taglen), nullptr);
+
+            ChipLogDetail(Inet, "Secure transport transmitting msg %u after encryption", state->GetSendMessageIndex());
+
+            err = mTransport->SendMessage(packetHeader, payloadHeader.GetEncodePacketFlags(), state->GetPeerAddress(), outBuf.release());
+        }
+        else
+        {
+            uint8_t * data = nullptr;
+            VerifyOrExit(msgBuf->EnsureReservedSize(headerSize), err = CHIP_ERROR_NO_MEMORY);
+
+            msgBuf->SetStart(msgBuf->Start() - headerSize);
+            data     = msgBuf->Start();
+
+            err = payloadHeader.Encode(data, totalLen, &actualEncodedHeaderSize);
+            SuccessOrExit(err);
+
+            err = state->GetSecureSession().Encrypt(data, totalLen, data, packetHeader, payloadHeader.GetEncodePacketFlags(), mac);
+            SuccessOrExit(err);
+
+            VerifyOrExit(mac.TagLenForEncryptionType(packetHeader.GetEncryptionType()) <= msgBuf->AvailableDataLength(), err = CHIP_ERROR_NO_MEMORY);
+
+            err = mac.Encode(packetHeader, &data[totalLen], kMaxTagLen, &taglen);
+            SuccessOrExit(err);
+
+            VerifyOrExit(CanCastTo<uint16_t>(totalLen + taglen), err = CHIP_ERROR_INTERNAL);
+            msgBuf->SetDataLength(static_cast<uint16_t>(totalLen + taglen), nullptr);
+
+            ChipLogDetail(Inet, "Secure transport transmitting msg %u after encryption", state->GetSendMessageIndex());
+
+            err    = mTransport->SendMessage(packetHeader, payloadHeader.GetEncodePacketFlags(), state->GetPeerAddress(), msgBuf.release());
+        }
     }
     SuccessOrExit(err);
     state->IncrementSendMessageIndex();
@@ -160,7 +196,6 @@ exit:
         PacketBuffer::Free(msgBuf);
         msgBuf = nullptr;
     }
-
     return err;
 }
 
