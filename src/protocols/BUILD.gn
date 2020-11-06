@@ -21,6 +21,10 @@ static_library("protocols") {
     "echo/Echo.h",
     "echo/EchoClient.cpp",
     "echo/EchoServer.cpp",
+    "bulk-data-transfer/BDXManagedNamespace.hpp",
+    "bulk-data-transfer/BulkDataTransfer.cpp",
+    "bulk-data-transfer/BulkDataTransfer.h",
+    "bulk-data-transfer/WeaveBdxDelegate.h",
   ]
 
   cflags = [ "-Wconversion" ]
