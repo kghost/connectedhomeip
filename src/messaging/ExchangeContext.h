@@ -144,7 +144,7 @@ public:
     void Abort();
 
     ExchangeContext * Alloc(ExchangeManager * em, uint16_t ExchangeId, uint64_t PeerNodeId, bool Initiator,
-                            ExchangeContextDelegateFactory * delegateFactory);
+                            ExchangeContextDelegate * delegate);
     void Free();
     void Reset();
 
