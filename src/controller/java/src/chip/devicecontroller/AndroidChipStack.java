@@ -68,6 +68,8 @@ public final class AndroidChipStack {
   /* Singleton instance of this class */
   private static final AndroidChipStack sInstance = new AndroidChipStack();
 
+  private long mChipStack;
+
   /* Mapping of connections to connection objects */
   private final List<ChipDeviceController> mConnections;
 
@@ -117,8 +119,7 @@ public final class AndroidChipStack {
 
             int connId = getConnId(gatt);
             if (connId > 0) {
-              handleWriteConfirmation(
-                  connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
+              handleWriteConfirmation(mChipStack, connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
             } else {
               Log.e(TAG, "onCharacteristicWrite no active connection");
               return;
@@ -132,7 +133,7 @@ public final class AndroidChipStack {
             byte[] charIdBytes = convertUUIDToBytes(characteristic.getUuid());
             int connId = getConnId(gatt);
             if (connId > 0) {
-              handleIndicationReceived(connId, svcIdBytes, charIdBytes, characteristic.getValue());
+              handleIndicationReceived(mChipStack, connId, svcIdBytes, charIdBytes, characteristic.getValue());
             } else {
               Log.e(TAG, "onCharacteristicChanged no active connection");
               return;
@@ -163,11 +164,9 @@ public final class AndroidChipStack {
             }
 
             if (desc.getValue() == BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) {
-              handleSubscribeComplete(
-                  connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
+              handleSubscribeComplete(mChipStack, connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
             } else if (desc.getValue() == BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE) {
-              handleUnsubscribeComplete(
-                  connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
+              handleUnsubscribeComplete(mChipStack, connId, svcIdBytes, charIdBytes, status == BluetoothGatt.GATT_SUCCESS);
             } else {
               Log.d(TAG, "Unexpected onDescriptorWrite().");
             }
@@ -373,17 +372,13 @@ public final class AndroidChipStack {
     System.loadLibrary("CHIPController");
   }
 
-  private native void handleWriteConfirmation(
-      int connId, byte[] svcId, byte[] charId, boolean success);
+  private native void handleWriteConfirmation(long chip, int connId, byte[] svcId, byte[] charId, boolean success);
 
-  private native void handleIndicationReceived(
-      int connId, byte[] svcId, byte[] charId, byte[] data);
+  private native void handleIndicationReceived(long chip, int connId, byte[] svcId, byte[] charId, byte[] data);
 
-  private native void handleSubscribeComplete(
-      int connId, byte[] svcId, byte[] charId, boolean success);
+  private native void handleSubscribeComplete(long chip, int connId, byte[] svcId, byte[] charId, boolean success);
 
-  private native void handleUnsubscribeComplete(
-      int connId, byte[] svcId, byte[] charId, boolean success);
+  private native void handleUnsubscribeComplete(long chip, int connId, byte[] svcId, byte[] charId, boolean success);
 
   private native void handleConnectionError(int connId);
 

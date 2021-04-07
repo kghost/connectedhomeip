@@ -24,7 +24,7 @@
 using namespace ::chip;
 using namespace ::chip::SetupPayloadData;
 
-CHIP_ERROR AdditionalDataParseCommand::Run(PersistentStorage & storage, NodeId localId, NodeId remoteId)
+CHIP_ERROR AdditionalDataParseCommand::Run(chip::ControllerStack * stack, NodeId remoteId)
 {
     std::vector<uint8_t> payloadData;
     AdditionalDataPayload resultPayload;

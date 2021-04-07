@@ -73,8 +73,7 @@ const char * ReadClient::GetStateStr() const
 void ReadClient::MoveToState(const ClientState aTargetState)
 {
     mState = aTargetState;
-    ChipLogDetail(DataManagement, "Client[%u] moving to [%s]", InteractionModelEngine::GetInstance()->GetReadClientArrayIndex(this),
-                  GetStateStr());
+    ChipLogDetail(DataManagement, "Client[%p] moving to [%s]", this, GetStateStr());
 }
 
 CHIP_ERROR ReadClient::SendReadRequest(NodeId aNodeId, Transport::AdminId aAdminId, EventPathParams * apEventPathParamsList,
@@ -82,8 +81,7 @@ CHIP_ERROR ReadClient::SendReadRequest(NodeId aNodeId, Transport::AdminId aAdmin
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     System::PacketBufferHandle msgBuf;
-    ChipLogDetail(DataManagement, "%s: Client[%u] [%5.5s]", __func__,
-                  InteractionModelEngine::GetInstance()->GetReadClientArrayIndex(this), GetStateStr());
+    ChipLogDetail(DataManagement, "%s: Client[%p] [%5.5s]", __func__, this, GetStateStr());
     VerifyOrExit(ClientState::Initialized == mState, err = CHIP_ERROR_INCORRECT_STATE);
     VerifyOrExit(mpDelegate != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
     VerifyOrExit(mpExchangeCtx == nullptr, err = CHIP_ERROR_INCORRECT_STATE);

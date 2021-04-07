@@ -38,6 +38,9 @@
 
 namespace chip {
 namespace app {
+
+class InteractionModelEngine;
+
 /**
  *  @class ReadHandler
  *
@@ -81,7 +84,7 @@ public:
      *  @retval #CHIP_NO_ERROR On success.
      *
      */
-    CHIP_ERROR OnReadRequest(Messaging::ExchangeContext * apExchangeContext, System::PacketBufferHandle aPayload);
+    CHIP_ERROR OnReadRequest(InteractionModelEngine * imEngine, Messaging::ExchangeContext * apExchangeContext, System::PacketBufferHandle aPayload);
 
     /**
      *  Send ReportData to initiator
@@ -107,7 +110,7 @@ private:
         Reportable,        //< The handler has received read request and is waiting for the data to send to be available
     };
 
-    CHIP_ERROR ProcessReadRequest(System::PacketBufferHandle aPayload);
+    CHIP_ERROR ProcessReadRequest(InteractionModelEngine * imEngine, System::PacketBufferHandle aPayload);
 
     void MoveToState(const HandlerState aTargetState);
 

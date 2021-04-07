@@ -33,6 +33,7 @@
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/KeyValueStoreManager.h>
 #include <setup_payload/SetupPayload.h>
+#include <stack/StackImpl.h>
 #include <support/CodeUtils.h>
 #include <support/ErrorStr.h>
 #include <support/logging/CHIPLogging.h>
@@ -51,6 +52,8 @@ using namespace ::chip::DeviceLayer;
 using namespace ::chip::Messaging;
 
 namespace {
+
+static StackImpl<> gChipStack(kTestDeviceNodeId);
 
 constexpr bool isRendezvousBypassed()
 {
@@ -293,8 +296,6 @@ private:
     bool isBLE = true;
 };
 
-DemoTransportMgr gTransports;
-SecureSessionMgr gSessions;
 RendezvousServer gRendezvousServer;
 ServerRendezvousAdvertisementDelegate gAdvDelegate;
 
@@ -318,7 +319,7 @@ static CHIP_ERROR OpenPairingWindowUsingVerifier(uint16_t discriminator, PASEVer
     VerifyOrReturnError(adminInfo != nullptr, CHIP_ERROR_NO_MEMORY);
     gNextAvailableAdminId++;
 
-    return gRendezvousServer.WaitForPairing(std::move(params), &gTransports, &gSessions, adminInfo);
+    return gRendezvousServer.WaitForPairing(std::move(params), &gChipStack.GetTransportManager(), &gChipStack.GetSecureSessionManager(), adminInfo);
 }
 
 class ServerCallback : public ExchangeDelegate
@@ -407,20 +408,14 @@ private:
     SecureSessionMgr * mSessionMgr = nullptr;
 };
 
-Messaging::ExchangeManager gExchangeMgr;
 ServerCallback gCallbacks;
 SecurePairingUsingTestSecret gTestPairing;
 
 } // namespace
 
-SecureSessionMgr & chip::SessionManager()
-{
-    return gSessions;
-}
-
 Messaging::ExchangeManager & chip::ExchangeManager()
 {
-    return gExchangeMgr;
+    return gChipStack.GetExchangeManager();
 }
 
 CHIP_ERROR OpenDefaultPairingWindow(ResetAdmins resetAdmins, chip::PairingWindowAdvertisement advertisementMode)
@@ -457,7 +452,7 @@ CHIP_ERROR OpenDefaultPairingWindow(ResetAdmins resetAdmins, chip::PairingWindow
     VerifyOrReturnError(adminInfo != nullptr, CHIP_ERROR_NO_MEMORY);
     gNextAvailableAdminId++;
 
-    return gRendezvousServer.WaitForPairing(std::move(params), &gTransports, &gSessions, adminInfo);
+    return gRendezvousServer.WaitForPairing(std::move(params), &gChipStack.GetTransportManager(), &gChipStack.GetSecureSessionManager(), adminInfo);
 }
 
 // The function will initialize datamodel handler and then start the server
@@ -476,28 +471,10 @@ void InitServer(AppDelegate * delegate)
 
     gAdvDelegate.SetDelegate(delegate);
 
-    // Init transport before operations with secure session mgr.
-#if INET_CONFIG_ENABLE_IPV4
-    err = gTransports.Init(UdpListenParameters(&DeviceLayer::InetLayer).SetAddressType(kIPAddressType_IPv6),
-                           UdpListenParameters(&DeviceLayer::InetLayer).SetAddressType(kIPAddressType_IPv4));
-#else
-    err = gTransports.Init(UdpListenParameters(&DeviceLayer::InetLayer).SetAddressType(kIPAddressType_IPv6));
-#endif
-    SuccessOrExit(err);
-
-    err = gSessions.Init(chip::kTestDeviceNodeId, &DeviceLayer::SystemLayer, &gTransports, &gAdminPairings);
-    SuccessOrExit(err);
-
-    err = gExchangeMgr.Init(&gSessions);
-    SuccessOrExit(err);
-
-#if CHIP_ENABLE_INTERACTION_MODEL
-    err = chip::app::InteractionModelEngine::GetInstance()->Init(&gExchangeMgr, nullptr);
-    SuccessOrExit(err);
-#endif
+    gChipStack.Init();
 
 #if defined(CHIP_APP_USE_ECHO)
-    err = InitEchoHandler(&gExchangeMgr);
+    err = InitEchoHandler(&gChipStack.GetExchangeManager());
     SuccessOrExit(err);
 #endif
 
@@ -516,7 +493,7 @@ void InitServer(AppDelegate * delegate)
         VerifyOrExit(CHIP_NO_ERROR == RestoreAllAdminPairingsFromKVS(gAdminPairings, gNextAvailableAdminId),
                      ChipLogError(AppServer, "Could not restore admin table"));
 
-        VerifyOrExit(CHIP_NO_ERROR == RestoreAllSessionsFromKVS(gSessions, gRendezvousServer),
+        VerifyOrExit(CHIP_NO_ERROR == RestoreAllSessionsFromKVS(gChipStack.GetSecureSessionManager(), gRendezvousServer),
                      ChipLogError(AppServer, "Could not restore previous sessions"));
     }
     else
@@ -531,14 +508,14 @@ void InitServer(AppDelegate * delegate)
     app::Mdns::StartServer();
 #endif
 
-    gCallbacks.SetSessionMgr(&gSessions);
+    gCallbacks.SetSessionMgr(&gChipStack.GetSecureSessionManager());
 
     // Register to receive unsolicited legacy ZCL messages from the exchange manager.
-    err = gExchangeMgr.RegisterUnsolicitedMessageHandlerForProtocol(Protocols::TempZCL::Id, &gCallbacks);
+    err = gChipStack.GetExchangeManager().RegisterUnsolicitedMessageHandlerForProtocol(Protocols::TempZCL::Id, &gCallbacks);
     VerifyOrExit(err == CHIP_NO_ERROR, err = CHIP_ERROR_NO_UNSOLICITED_MESSAGE_HANDLER);
 
     // Register to receive unsolicited Service Provisioning messages from the exchange manager.
-    err = gExchangeMgr.RegisterUnsolicitedMessageHandlerForProtocol(Protocols::ServiceProvisioning::Id, &gCallbacks);
+    err = gChipStack.GetExchangeManager().RegisterUnsolicitedMessageHandlerForProtocol(Protocols::ServiceProvisioning::Id, &gCallbacks);
     VerifyOrExit(err == CHIP_NO_ERROR, err = CHIP_ERROR_NO_UNSOLICITED_MESSAGE_HANDLER);
 
 exit:
@@ -565,7 +542,7 @@ CHIP_ERROR AddTestPairing()
     VerifyOrExit(adminInfo != nullptr, err = CHIP_ERROR_NO_MEMORY);
 
     adminInfo->SetNodeId(chip::kTestDeviceNodeId);
-    SuccessOrExit(err = gSessions.NewPairing(Optional<PeerAddress>{ PeerAddress::Uninitialized() }, chip::kTestControllerNodeId,
+    SuccessOrExit(err = gChipStack.GetSecureSessionManager().NewPairing(Optional<PeerAddress>{ PeerAddress::Uninitialized() }, chip::kTestControllerNodeId,
                                              &gTestPairing, SecureSessionMgr::PairingDirection::kResponder, gNextAvailableAdminId));
     ++gNextAvailableAdminId;
 

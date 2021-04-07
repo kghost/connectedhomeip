@@ -15,8 +15,10 @@
  *   limitations under the License.
  *
  */
-#include "AndroidDeviceControllerWrapper.h"
+#include "AndroidChipControllerStackWrapper.h"
 #include "CHIPJNIError.h"
+#include <stack/ControllerStackImpl.h>
+#include <controller/java/Global.h>
 
 #include <memory>
 
@@ -63,80 +65,111 @@ void CallVoidInt(JNIEnv * env, jobject object, const char * methodName, jint arg
     env->CallVoidMethod(object, method, argument);
 }
 
-CHIP_ERROR N2J_ByteArray(JNIEnv * env, const uint8_t * inArray, uint32_t inArrayLen, jbyteArray & outArray)
+void * IOThreadMain(void * arg)
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
+    JNIEnv * env;
+    JavaVMAttachArgs attachArgs;
+    struct timeval sleepTime;
+    fd_set readFDs, writeFDs, exceptFDs;
+    int numFDs = 0;
 
-    outArray = env->NewByteArray((int) inArrayLen);
-    VerifyOrExit(outArray != NULL, err = CHIP_ERROR_NO_MEMORY);
+    AndroidChipControllerStackWrapper * wrapper = static_cast<AndroidChipControllerStackWrapper*>(arg);
 
-    env->ExceptionClear();
-    env->SetByteArrayRegion(outArray, 0, inArrayLen, (jbyte *) inArray);
-    VerifyOrExit(!env->ExceptionCheck(), err = CHIP_JNI_ERROR_EXCEPTION_THROWN);
+    // Attach the IO thread to the JVM as a daemon thread.
+    // This allows the JVM to shutdown without waiting for this thread to exit.
+    attachArgs.version = JNI_VERSION_1_6;
+    attachArgs.name    = (char *) "CHIP Device Controller IO Thread";
+    attachArgs.group   = NULL;
+#ifdef __ANDROID__
+    sJVM->AttachCurrentThreadAsDaemon(&env, (void *) &attachArgs);
+#else
+    sJVM->AttachCurrentThreadAsDaemon((void **) &env, (void *) &attachArgs);
+#endif
 
-exit:
-    return err;
-}
+    // Set to true to quit the loop. This is currently unused.
+    std::atomic<bool> quit;
 
-CHIP_ERROR N2J_NewStringUTF(JNIEnv * env, const char * inStr, size_t inStrLen, jstring & outString)
-{
-    CHIP_ERROR err          = CHIP_NO_ERROR;
-    jbyteArray charArray    = NULL;
-    jstring utf8Encoding    = NULL;
-    jclass java_lang_String = NULL;
-    jmethodID ctor          = NULL;
+    ChipLogProgress(Controller, "IO thread starting");
 
-    err = N2J_ByteArray(env, reinterpret_cast<const uint8_t *>(inStr), inStrLen, charArray);
-    SuccessOrExit(err);
+    // Lock the stack to prevent collisions with Java threads.
+    pthread_mutex_lock(&sStackLock);
 
-    utf8Encoding = env->NewStringUTF("UTF-8");
-    VerifyOrExit(utf8Encoding != NULL, err = CHIP_ERROR_NO_MEMORY);
+    // Loop until we are told to exit.
+    while (!quit.load(std::memory_order_relaxed))
+    {
+        numFDs = 0;
+        FD_ZERO(&readFDs);
+        FD_ZERO(&writeFDs);
+        FD_ZERO(&exceptFDs);
 
-    java_lang_String = env->FindClass("java/lang/String");
-    VerifyOrExit(java_lang_String != NULL, err = CHIP_JNI_ERROR_TYPE_NOT_FOUND);
+        sleepTime.tv_sec  = 10;
+        sleepTime.tv_usec = 0;
 
-    ctor = env->GetMethodID(java_lang_String, "<init>", "([BLjava/lang/String;)V");
-    VerifyOrExit(ctor != NULL, err = CHIP_JNI_ERROR_METHOD_NOT_FOUND);
+        // Collect the currently active file descriptors.
+        wrapper->GetSystemLayer().PrepareSelect(numFDs, &readFDs, &writeFDs, &exceptFDs, sleepTime);
+        wrapper->GetInetLayer().PrepareSelect(numFDs, &readFDs, &writeFDs, &exceptFDs, sleepTime);
 
-    outString = (jstring) env->NewObject(java_lang_String, ctor, charArray, utf8Encoding);
-    VerifyOrExit(outString != NULL, err = CHIP_ERROR_NO_MEMORY);
+        // Unlock the stack so that Java threads can make API calls.
+        pthread_mutex_unlock(&sStackLock);
 
-exit:
-    // error code propagated from here, so clear any possible
-    // exceptions that arose here
-    env->ExceptionClear();
+        // Wait for for I/O or for the next timer to expire.
+        int selectRes = select(numFDs, &readFDs, &writeFDs, &exceptFDs, &sleepTime);
 
-    if (utf8Encoding != NULL)
-        env->DeleteLocalRef(utf8Encoding);
-    if (charArray != NULL)
-        env->DeleteLocalRef(charArray);
+        // Break the loop if requested to shutdown.
+        // if (sShutdown)
+        // break;
 
-    return err;
-}
+        // Re-lock the stack.
+        pthread_mutex_lock(&sStackLock);
 
-CHIP_ERROR N2J_NewStringUTF(JNIEnv * env, const char * inStr, jstring & outString)
-{
-    return N2J_NewStringUTF(env, inStr, strlen(inStr), outString);
+        // Perform I/O and/or dispatch timers.
+        wrapper->GetSystemLayer().HandleSelectResult(selectRes, &readFDs, &writeFDs, &exceptFDs);
+        wrapper->GetInetLayer().HandleSelectResult(selectRes, &readFDs, &writeFDs, &exceptFDs);
+    }
+
+    // Detach the thread from the JVM.
+    sJVM->DetachCurrentThread();
+
+    return NULL;
 }
 
 } // namespace
 
-AndroidDeviceControllerWrapper::~AndroidDeviceControllerWrapper()
+AndroidChipControllerStackWrapper::~AndroidChipControllerStackWrapper()
 {
+    // If the IO thread has been started, shut it down and wait for it to exit.
+    if (sIOThread != PTHREAD_NULL)
+    {
+        sShutdown = true;
+        mChipStack.GetSystemLayer().WakeSelect();
+        pthread_join(sIOThread, NULL);
+    }
+
     if ((mJavaVM != nullptr) && (mJavaObjectRef != nullptr))
     {
         GetJavaEnv()->DeleteGlobalRef(mJavaObjectRef);
     }
-    mController->Shutdown();
+    mChipStack.Shutdown();
 }
 
-void AndroidDeviceControllerWrapper::SetJavaObjectRef(JavaVM * vm, jobject obj)
+CHIP_ERROR AndroidChipControllerStackWrapper::Init(int listeningPort) {
+    mChipStack.GetTransportConfig().SetListenPort(listeningPort);
+    mChipStack.GetBleLayer()->mAppState = this;
+    ReturnErrorOnFailure(mChipStack.Init());
+
+    int pthreadErr = pthread_create(&sIOThread, NULL, IOThreadMain, this);
+    VerifyOrReturnError(pthreadErr == 0, chip::System::MapErrorPOSIX(pthreadErr));
+
+    return CHIP_NO_ERROR;
+}
+
+void AndroidChipControllerStackWrapper::SetJavaObjectRef(JavaVM * vm, jobject obj)
 {
     mJavaVM        = vm;
     mJavaObjectRef = GetJavaEnv()->NewGlobalRef(obj);
 }
 
-JNIEnv * AndroidDeviceControllerWrapper::GetJavaEnv()
+JNIEnv * AndroidChipControllerStackWrapper::GetJavaEnv()
 {
     if (mJavaVM == nullptr)
     {
@@ -149,48 +182,20 @@ JNIEnv * AndroidDeviceControllerWrapper::GetJavaEnv()
     return env;
 }
 
-AndroidDeviceControllerWrapper * AndroidDeviceControllerWrapper::AllocateNew(JavaVM * vm, jobject deviceControllerObj,
-                                                                             chip::NodeId nodeId, chip::System::Layer * systemLayer,
-                                                                             chip::Inet::InetLayer * inetLayer,
-                                                                             CHIP_ERROR * errInfoOnFailure)
+AndroidChipControllerStackWrapper * AndroidChipControllerStackWrapper::AllocateNew(JavaVM * vm, jobject deviceControllerObj, chip::NodeId nodeId, CHIP_ERROR * errInfoOnFailure)
 {
     if (errInfoOnFailure == nullptr)
     {
         ChipLogError(Controller, "Missing error info");
         return nullptr;
     }
-    if (systemLayer == nullptr)
-    {
-        ChipLogError(Controller, "Missing system layer");
-        *errInfoOnFailure = CHIP_ERROR_INVALID_ARGUMENT;
-        return nullptr;
-    }
-    if (inetLayer == nullptr)
-    {
-        ChipLogError(Controller, "Missing inet layer");
-        *errInfoOnFailure = CHIP_ERROR_INVALID_ARGUMENT;
-        return nullptr;
-    }
 
     *errInfoOnFailure = CHIP_NO_ERROR;
 
-    std::unique_ptr<DeviceCommissioner> controller(new DeviceCommissioner());
-
-    if (!controller)
-    {
-        *errInfoOnFailure = CHIP_ERROR_NO_MEMORY;
-        return nullptr;
-    }
-    std::unique_ptr<AndroidDeviceControllerWrapper> wrapper(new AndroidDeviceControllerWrapper(std::move(controller)));
+    std::unique_ptr<AndroidChipControllerStackWrapper> wrapper(new AndroidChipControllerStackWrapper(nodeId));
+    wrapper->Init(CHIP_PORT + 1);
 
     wrapper->SetJavaObjectRef(vm, deviceControllerObj);
-    wrapper->Controller()->SetUdpListenPort(CHIP_PORT + 1);
-    *errInfoOnFailure = wrapper->Controller()->Init(nodeId, wrapper.get(), wrapper.get(), systemLayer, inetLayer);
-
-    if (*errInfoOnFailure != CHIP_NO_ERROR)
-    {
-        return nullptr;
-    }
 
     *errInfoOnFailure = wrapper->Controller()->ServiceEvents();
 
@@ -202,7 +207,7 @@ AndroidDeviceControllerWrapper * AndroidDeviceControllerWrapper::AllocateNew(Jav
     return wrapper.release();
 }
 
-void AndroidDeviceControllerWrapper::SendNetworkCredentials(const char * ssid, const char * password)
+void AndroidChipControllerStackWrapper::SendNetworkCredentials(const char * ssid, const char * password)
 {
     if (mCredentialsDelegate == nullptr)
     {
@@ -214,7 +219,7 @@ void AndroidDeviceControllerWrapper::SendNetworkCredentials(const char * ssid, c
     mCredentialsDelegate->SendNetworkCredentials(ssid, password);
 }
 
-void AndroidDeviceControllerWrapper::SendThreadCredentials(const chip::DeviceLayer::Internal::DeviceNetworkInfo & threadData)
+void AndroidChipControllerStackWrapper::SendThreadCredentials(const chip::DeviceLayer::Internal::DeviceNetworkInfo & threadData)
 {
     if (mCredentialsDelegate == nullptr)
     {
@@ -227,7 +232,7 @@ void AndroidDeviceControllerWrapper::SendThreadCredentials(const chip::DeviceLay
     mCredentialsDelegate->SendThreadCredentials(threadData);
 }
 
-void AndroidDeviceControllerWrapper::OnNetworkCredentialsRequested(chip::RendezvousDeviceCredentialsDelegate * callback)
+void AndroidChipControllerStackWrapper::OnNetworkCredentialsRequested(chip::RendezvousDeviceCredentialsDelegate * callback)
 {
     mCredentialsDelegate = callback;
 
@@ -243,7 +248,7 @@ void AndroidDeviceControllerWrapper::OnNetworkCredentialsRequested(chip::Rendezv
     env->CallVoidMethod(mJavaObjectRef, method);
 }
 
-void AndroidDeviceControllerWrapper::OnOperationalCredentialsRequested(const char * csr, size_t csr_length,
+void AndroidChipControllerStackWrapper::OnOperationalCredentialsRequested(const char * csr, size_t csr_length,
                                                                        chip::RendezvousDeviceCredentialsDelegate * callback)
 {
     mCredentialsDelegate = callback;
@@ -267,31 +272,31 @@ void AndroidDeviceControllerWrapper::OnOperationalCredentialsRequested(const cha
     env->CallVoidMethod(mJavaObjectRef, method, jCsr);
 }
 
-void AndroidDeviceControllerWrapper::OnStatusUpdate(chip::RendezvousSessionDelegate::Status status)
+void AndroidChipControllerStackWrapper::OnStatusUpdate(chip::RendezvousSessionDelegate::Status status)
 {
     CallVoidInt(GetJavaEnv(), mJavaObjectRef, "onStatusUpdate", static_cast<jint>(status));
 }
 
-void AndroidDeviceControllerWrapper::OnPairingComplete(CHIP_ERROR error)
+void AndroidChipControllerStackWrapper::OnPairingComplete(CHIP_ERROR error)
 {
     CallVoidInt(GetJavaEnv(), mJavaObjectRef, "onPairingComplete", static_cast<jint>(error));
 }
 
-void AndroidDeviceControllerWrapper::OnPairingDeleted(CHIP_ERROR error)
+void AndroidChipControllerStackWrapper::OnPairingDeleted(CHIP_ERROR error)
 {
     CallVoidInt(GetJavaEnv(), mJavaObjectRef, "onPairingDeleted", static_cast<jint>(error));
 }
 
-void AndroidDeviceControllerWrapper::OnMessage(chip::System::PacketBufferHandle msg) {}
+void AndroidChipControllerStackWrapper::OnMessage(chip::System::PacketBufferHandle msg) {}
 
-void AndroidDeviceControllerWrapper::OnStatusChange(void) {}
+void AndroidChipControllerStackWrapper::OnStatusChange(void) {}
 
-void AndroidDeviceControllerWrapper::SetStorageDelegate(PersistentStorageResultDelegate * delegate)
+void AndroidChipControllerStackWrapper::SetStorageDelegate(PersistentStorageResultDelegate * delegate)
 {
     mStorageResultDelegate = delegate;
 }
 
-CHIP_ERROR AndroidDeviceControllerWrapper::SyncGetKeyValue(const char * key, char * value, uint16_t & size)
+CHIP_ERROR AndroidChipControllerStackWrapper::SyncGetKeyValue(const char * key, char * value, uint16_t & size)
 {
     jstring keyString       = NULL;
     jstring valueString     = NULL;
@@ -350,7 +355,7 @@ exit:
     return err;
 }
 
-void AndroidDeviceControllerWrapper::AsyncSetKeyValue(const char * key, const char * value)
+void AndroidChipControllerStackWrapper::AsyncSetKeyValue(const char * key, const char * value)
 {
     jclass storageCls = GetPersistentStorageClass();
     jmethodID method  = GetJavaEnv()->GetStaticMethodID(storageCls, "setKeyValue", "(Ljava/lang/String;Ljava/lang/String;)V");
@@ -379,7 +384,7 @@ exit:
     GetJavaEnv()->DeleteLocalRef(valueString);
 }
 
-void AndroidDeviceControllerWrapper::AsyncDeleteKeyValue(const char * key)
+void AndroidChipControllerStackWrapper::AsyncDeleteKeyValue(const char * key)
 {
     jclass storageCls = GetPersistentStorageClass();
     jmethodID method  = GetJavaEnv()->GetStaticMethodID(storageCls, "deleteKeyValue", "(Ljava/lang/String;)V");

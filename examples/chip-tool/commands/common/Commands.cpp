@@ -27,6 +27,7 @@
 #include <platform/CHIPDeviceLayer.h>
 #endif
 
+#include <stack/ControllerStackImpl.h>
 #include <support/CHIPMem.h>
 #include <support/CodeUtils.h>
 
@@ -67,6 +68,7 @@ CHIP_ERROR Commands::RunCommand(PersistentStorage & storage, NodeId localId, Nod
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     std::map<std::string, CommandsVector>::iterator cluster;
+    chip::ControllerStackImpl<> stack(localId);
     Command * command = nullptr;
 
     if (argc <= 1)
@@ -125,7 +127,10 @@ CHIP_ERROR Commands::RunCommand(PersistentStorage & storage, NodeId localId, Nod
         ExitNow(err = CHIP_ERROR_INVALID_ARGUMENT);
     }
 
-    err = command->Run(storage, localId, remoteId);
+    stack.GetTransportConfig().SetListenPort(storage.GetListenPort());
+    stack.InitController(&storage, nullptr);
+
+    err = command->Run(&stack, remoteId);
     if (err != CHIP_NO_ERROR)
     {
         ChipLogError(chipTool, "Run command failure: %s", chip::ErrorStr(err));

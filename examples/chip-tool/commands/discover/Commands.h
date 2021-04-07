@@ -30,11 +30,9 @@ public:
         AddArgument("fabricid", 0, UINT64_MAX, &mFabricId);
     }
 
-    CHIP_ERROR Run(PersistentStorage & storage, NodeId localId, NodeId remoteId) override
+    CHIP_ERROR Run(chip::ControllerStack * stack, NodeId remoteId) override
     {
-        ReturnErrorOnFailure(mCommissioner.SetUdpListenPort(storage.GetListenPort()));
-        ReturnErrorOnFailure(mCommissioner.Init(localId, &storage));
-        ReturnErrorOnFailure(mCommissioner.ServiceEvents());
+        ReturnErrorOnFailure(stack->GetDeviceCommissioner().ServiceEvents());
 
         ReturnErrorOnFailure(chip::Mdns::Resolver::Instance().SetResolverDelegate(this));
         ReturnErrorOnFailure(chip::Mdns::Resolver::Instance().ResolveNodeId(mNodeId, mFabricId, chip::Inet::kIPAddressType_Any));
@@ -42,8 +40,7 @@ public:
         UpdateWaitForResponse(true);
         WaitForResponse(mWaitDurationInSeconds);
 
-        mCommissioner.ServiceEventSignal();
-        mCommissioner.Shutdown();
+        stack->GetDeviceCommissioner().ServiceEventSignal();
 
         VerifyOrReturnError(GetCommandExitStatus(), CHIP_ERROR_INTERNAL);
 

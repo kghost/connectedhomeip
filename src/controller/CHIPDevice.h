@@ -32,7 +32,7 @@
 #include <app/util/basic-types.h>
 #include <core/CHIPCallback.h>
 #include <core/CHIPCore.h>
-#include <messaging/ExchangeMgr.h>
+#include <stack/Stack.h>
 #include <setup_payload/SetupPayload.h>
 #include <support/Base64.h>
 #include <support/DLLUtil.h>
@@ -55,14 +55,6 @@ using DeviceTransportMgr = TransportMgr<Transport::UDP /* IPv6 */
                                         Transport::UDP /* IPv4 */
 #endif
                                         >;
-
-struct ControllerDeviceInitParams
-{
-    DeviceTransportMgr * transportMgr        = nullptr;
-    SecureSessionMgr * sessionMgr            = nullptr;
-    Messaging::ExchangeManager * exchangeMgr = nullptr;
-    Inet::InetLayer * inetLayer              = nullptr;
-};
 
 class DLL_EXPORT Device
 {
@@ -151,17 +143,15 @@ public:
      *   that of this device object. If these objects are freed, while the device object is
      *   still using them, it can lead to unknown behavior and crashes.
      *
-     * @param[in] params       Wrapper object for transport manager etc.
+     * @param[in] transportMgr Transport manager object pointer
+     * @param[in] sessionMgr   Secure session manager object pointer
+     * @param[in] inetLayer    InetLayer object pointer
      * @param[in] listenPort   Port on which controller is listening (typically CHIP_PORT)
      * @param[in] admin        Local administrator that's initializing this device object
      */
-    void Init(ControllerDeviceInitParams params, uint16_t listenPort, Transport::AdminId admin)
+    void Init(Stack * stack, Transport::AdminId admin)
     {
-        mTransportMgr   = params.transportMgr;
-        mSessionManager = params.sessionMgr;
-        mExchangeMgr    = params.exchangeMgr;
-        mInetLayer      = params.inetLayer;
-        mListenPort     = listenPort;
+        mStack = stack;
         mAdminId        = admin;
     }
 
@@ -176,16 +166,17 @@ public:
      *   uninitialzed/unpaired device objects. The object is initialized only when the device
      *   is actually paired.
      *
-     * @param[in] params       Wrapper object for transport manager etc.
+     * @param[in] transportMgr Transport manager object pointer
+     * @param[in] sessionMgr   Secure session manager object pointer
+     * @param[in] inetLayer    InetLayer object pointer
      * @param[in] listenPort   Port on which controller is listening (typically CHIP_PORT)
      * @param[in] deviceId     Node ID of the device
      * @param[in] peerAddress  The location of the peer. MUST be of type Transport::Type::kUdp
      * @param[in] admin        Local administrator that's initializing this device object
      */
-    void Init(ControllerDeviceInitParams params, uint16_t listenPort, NodeId deviceId, const Transport::PeerAddress & peerAddress,
-              Transport::AdminId admin)
+    void Init(Stack * stack, NodeId deviceId, const Transport::PeerAddress & peerAddress, Transport::AdminId admin)
     {
-        Init(params, mListenPort, admin);
+        Init(stack, admin);
         mDeviceId = deviceId;
         mState    = ConnectionState::Connecting;
 
@@ -291,9 +282,8 @@ public:
     {
         SetActive(false);
         mState          = ConnectionState::NotConnected;
-        mSessionManager = nullptr;
         mStatusDelegate = nullptr;
-        mInetLayer      = nullptr;
+        mStack = nullptr;
     }
 
     NodeId GetDeviceId() const { return mDeviceId; }
@@ -323,13 +313,12 @@ private:
     };
     /* Node ID assigned to the CHIP device */
     NodeId mDeviceId;
+    Stack * mStack;
 
     /** Address used to communicate with the device. MUST be Type::kUDP
      *  in the current implementation.
      */
     Transport::PeerAddress mDeviceUdpAddress = Transport::PeerAddress::UDP(Inet::IPAddress::Any);
-
-    Inet::InetLayer * mInetLayer = nullptr;
 
     bool mActive           = false;
     ConnectionState mState = ConnectionState::NotConnected;
@@ -337,12 +326,6 @@ private:
     PASESessionSerializable mPairing;
 
     DeviceStatusDelegate * mStatusDelegate = nullptr;
-
-    SecureSessionMgr * mSessionManager = nullptr;
-
-    DeviceTransportMgr * mTransportMgr = nullptr;
-
-    Messaging::ExchangeManager * mExchangeMgr = nullptr;
 
     app::CommandSender * mCommandSender = nullptr;
 
@@ -371,8 +354,6 @@ private:
      * @param[out] didLoad   Were the secure session params loaded by the call to this function.
      */
     CHIP_ERROR LoadSecureSessionParametersIfNeeded(bool & didLoad);
-
-    uint16_t mListenPort;
 
     Transport::AdminId mAdminId = Transport::kUndefinedAdminId;
 };

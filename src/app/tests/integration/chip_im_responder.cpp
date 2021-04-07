@@ -108,8 +108,6 @@ exit:
 } // namespace chip
 
 namespace {
-chip::TransportMgr<chip::Transport::UDP> gTransportManager;
-chip::SecureSessionMgr gSessionManager;
 chip::SecurePairingUsingTestSecret gTestPairing;
 
 } // namespace
@@ -117,30 +115,19 @@ chip::SecurePairingUsingTestSecret gTestPairing;
 int main(int argc, char * argv[])
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+
+    ReturnErrorOnFailure(chip::Platform::MemoryInit());
+
+    ReturnErrorOnFailure(gChipStack.Init());
+
     chip::app::InteractionModelDelegate mockDelegate;
     chip::Optional<chip::Transport::PeerAddress> peer(chip::Transport::Type::kUndefined);
     const chip::Transport::AdminId gAdminId = 0;
-    chip::Transport::AdminPairingTable admins;
-    chip::Transport::AdminPairingInfo * adminInfo = admins.AssignAdminId(gAdminId, chip::kTestDeviceNodeId);
+    chip::Transport::AdminPairingInfo * adminInfo = gChipStack.GetAdmins().AssignAdminId(gAdminId, chip::kTestDeviceNodeId);
 
     VerifyOrExit(adminInfo != nullptr, err = CHIP_ERROR_NO_MEMORY);
 
-    InitializeChip();
-
-    err = gTransportManager.Init(
-        chip::Transport::UdpListenParameters(&chip::DeviceLayer::InetLayer).SetAddressType(chip::Inet::kIPAddressType_IPv4));
-    SuccessOrExit(err);
-
-    err = gSessionManager.Init(chip::kTestDeviceNodeId, &chip::DeviceLayer::SystemLayer, &gTransportManager, &admins);
-    SuccessOrExit(err);
-
-    err = gExchangeManager.Init(&gSessionManager);
-    SuccessOrExit(err);
-
-    err = chip::app::InteractionModelEngine::GetInstance()->Init(&gExchangeManager, &mockDelegate);
-    SuccessOrExit(err);
-
-    err = gSessionManager.NewPairing(peer, chip::kTestControllerNodeId, &gTestPairing,
+    err = gChipStack.GetSecureSessionManager().NewPairing(peer, chip::kTestControllerNodeId, &gTestPairing,
                                      chip::SecureSessionMgr::PairingDirection::kResponder, gAdminId);
     SuccessOrExit(err);
 
@@ -156,9 +143,7 @@ exit:
         exit(EXIT_FAILURE);
     }
 
-    chip::app::InteractionModelEngine::GetInstance()->Shutdown();
-
-    ShutdownChip();
+    gChipStack.Shutdown();
 
     return EXIT_SUCCESS;
 }

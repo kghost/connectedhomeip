@@ -22,26 +22,22 @@ using namespace ::chip;
 
 constexpr uint16_t kWaitDurationInSeconds = 120;
 
-CHIP_ERROR PairingCommand::Run(PersistentStorage & storage, NodeId localId, NodeId remoteId)
+CHIP_ERROR PairingCommand::Run(chip::ControllerStack * stack, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
-    err = mCommissioner.Init(localId, &storage, this);
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Commissioner: %s", chip::ErrorStr(err)));
-
-    err = mCommissioner.ServiceEvents();
+    err = stack->GetDeviceCommissioner().ServiceEvents();
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Run Loop: %s", chip::ErrorStr(err)));
 
-    err = RunInternal(remoteId);
+    err = RunInternal(stack, remoteId);
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Init Failure! PairDevice: %s", chip::ErrorStr(err)));
 
 exit:
-    mCommissioner.ServiceEventSignal();
-    mCommissioner.Shutdown();
+    stack->GetDeviceCommissioner().ServiceEventSignal();
     return err;
 }
 
-CHIP_ERROR PairingCommand::RunInternal(NodeId remoteId)
+CHIP_ERROR PairingCommand::RunInternal(chip::ControllerStack * stack, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
@@ -49,16 +45,16 @@ CHIP_ERROR PairingCommand::RunInternal(NodeId remoteId)
     switch (mPairingMode)
     {
     case PairingMode::None:
-        err = Unpair(remoteId);
+        err = Unpair(stack, remoteId);
         break;
     case PairingMode::Bypass:
-        err = PairWithoutSecurity(remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort));
+        err = PairWithoutSecurity(stack, remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort));
         break;
     case PairingMode::Ble:
-        err = Pair(remoteId, PeerAddress::BLE());
+        err = Pair(stack, remoteId, PeerAddress::BLE());
         break;
     case PairingMode::SoftAP:
-        err = Pair(remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort));
+        err = Pair(stack, remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort));
         break;
     }
     WaitForResponse(kWaitDurationInSeconds);
@@ -66,24 +62,24 @@ CHIP_ERROR PairingCommand::RunInternal(NodeId remoteId)
     return err;
 }
 
-CHIP_ERROR PairingCommand::Pair(NodeId remoteId, PeerAddress address)
+CHIP_ERROR PairingCommand::Pair(chip::ControllerStack * stack, NodeId remoteId, PeerAddress address)
 {
     RendezvousParameters params =
         RendezvousParameters().SetSetupPINCode(mSetupPINCode).SetDiscriminator(mDiscriminator).SetPeerAddress(address);
 
-    return mCommissioner.PairDevice(remoteId, params);
+    return stack->GetDeviceCommissioner().PairDevice(remoteId, params);
 }
 
-CHIP_ERROR PairingCommand::PairWithoutSecurity(NodeId remoteId, PeerAddress address)
+CHIP_ERROR PairingCommand::PairWithoutSecurity(chip::ControllerStack * stack, NodeId remoteId, PeerAddress address)
 {
     ChipSerializedDevice serializedTestDevice;
-    return mCommissioner.PairTestDeviceWithoutSecurity(remoteId, address, serializedTestDevice);
+    return stack->GetDeviceCommissioner().PairTestDeviceWithoutSecurity(remoteId, address, serializedTestDevice);
 }
 
-CHIP_ERROR PairingCommand::Unpair(NodeId remoteId)
+CHIP_ERROR PairingCommand::Unpair(chip::ControllerStack * stack, NodeId remoteId)
 {
     SetCommandExitStatus(true);
-    return mCommissioner.UnpairDevice(remoteId);
+    return stack->GetDeviceCommissioner().UnpairDevice(remoteId);
 }
 
 void PairingCommand::OnStatusUpdate(RendezvousSessionDelegate::Status status)

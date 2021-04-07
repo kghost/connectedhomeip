@@ -42,6 +42,7 @@ static_library("controller") {
     "${chip_root}/src/messaging",
     "${chip_root}/src/platform",
     "${chip_root}/src/setup_payload",
+    "${chip_root}/src/stack",
     "${chip_root}/src/transport",
   ]
 

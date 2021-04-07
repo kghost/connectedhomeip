@@ -68,16 +68,6 @@ class InteractionModelEngine : public Messaging::ExchangeDelegate
 {
 public:
     /**
-     * @brief Retrieve the singleton Interaction Model Engine.
-     *
-     *  @return  A pointer to the shared InteractionModel Engine
-     *
-     */
-    static InteractionModelEngine * GetInstance(void);
-
-    InteractionModelEngine(void);
-
-    /**
      *  Initialize the InteractionModel Engine.
      *
      *  @param[in]    apExchangeMgr    A pointer to the ExchangeManager object.
@@ -115,15 +105,6 @@ public:
      *  @retval #CHIP_NO_ERROR On success.
      */
     CHIP_ERROR NewReadClient(ReadClient ** const apReadClient);
-
-    /**
-     *  Get read client index in mReadClients
-     *
-     *  @param[in]    apReadClient    A pointer to a read client object.
-     *
-     *  @retval  the index in mReadClients array
-     */
-    uint16_t GetReadClientArrayIndex(const ReadClient * const apReadClient) const;
 
     reporting::Engine & GetReportingEngine() { return mReportingEngine; }
 

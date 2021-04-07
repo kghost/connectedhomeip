@@ -26,21 +26,15 @@ namespace {
 constexpr uint16_t kWaitDurationInSeconds = 10;
 } // namespace
 
-CHIP_ERROR ModelCommand::Run(PersistentStorage & storage, NodeId localId, NodeId remoteId)
+CHIP_ERROR ModelCommand::Run(chip::ControllerStack * stack, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
-    err = mCommissioner.SetUdpListenPort(storage.GetListenPort());
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Commissioner: %s", ErrorStr(err)));
-
-    err = mCommissioner.Init(localId, &storage);
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Commissioner: %s", ErrorStr(err)));
-
-    err = mCommissioner.ServiceEvents();
+    err = stack->GetDeviceCommissioner().ServiceEvents();
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Run Loop: %s", ErrorStr(err)));
 
-    err = mCommissioner.GetDevice(remoteId, &mDevice);
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Init failure! No pairing for device: %" PRIu64, localId));
+    err = stack->GetDeviceCommissioner().GetDevice(remoteId, &mDevice);
+    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Init failure! No pairing for device: %" PRIu64, stack->GetLocalNodeId()));
 
     err = SendCommand(mDevice, mEndPointId);
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Failed to send message: %s", ErrorStr(err)));
@@ -51,7 +45,6 @@ CHIP_ERROR ModelCommand::Run(PersistentStorage & storage, NodeId localId, NodeId
     VerifyOrExit(GetCommandExitStatus(), err = CHIP_ERROR_INTERNAL);
 
 exit:
-    mCommissioner.ServiceEventSignal();
-    mCommissioner.Shutdown();
+    stack->GetDeviceCommissioner().ServiceEventSignal();
     return err;
 }

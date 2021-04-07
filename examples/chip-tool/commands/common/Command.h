@@ -21,6 +21,7 @@
 #include <app/server/DataModelHandler.h>
 #include <controller/CHIPDeviceController.h>
 #include <inet/InetInterface.h>
+#include <stack/ControllerStack.h>
 #include <support/logging/CHIPLogging.h>
 
 #include <atomic>
@@ -141,7 +142,7 @@ public:
         return AddArgument(name, min, max, reinterpret_cast<void *>(out), Number_uint64);
     }
 
-    virtual CHIP_ERROR Run(PersistentStorage & storage, NodeId localId, NodeId remoteId) = 0;
+    virtual CHIP_ERROR Run(chip::ControllerStack * stack, NodeId remoteId) = 0;
 
     bool GetCommandExitStatus() const { return mCommandExitStatus; }
     void SetCommandExitStatus(bool status)

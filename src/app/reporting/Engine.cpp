@@ -25,6 +25,7 @@
 
 #include <app/InteractionModelEngine.h>
 #include <app/reporting/Engine.h>
+#include <support/OwnerOf.h>
 
 namespace chip {
 namespace app {
@@ -115,9 +116,10 @@ void Engine::Run(System::Layer * aSystemLayer, void * apAppState, System::Error)
 
 CHIP_ERROR Engine::ScheduleRun()
 {
-    if (InteractionModelEngine::GetInstance()->GetExchangeManager() != nullptr)
+    InteractionModelEngine * imEngine = owner_of(this, &InteractionModelEngine::mReportingEngine);
+    if (imEngine->GetExchangeManager() != nullptr)
     {
-        return InteractionModelEngine::GetInstance()->GetExchangeManager()->GetSessionMgr()->SystemLayer()->ScheduleWork(Run, this);
+        return imEngine->GetExchangeManager()->GetSessionMgr()->SystemLayer()->ScheduleWork(Run, this);
     }
     else
     {
@@ -129,7 +131,7 @@ void Engine::Run()
 {
     uint32_t numReadHandled = 0;
 
-    InteractionModelEngine * imEngine = InteractionModelEngine::GetInstance();
+    InteractionModelEngine * imEngine = owner_of(this, &InteractionModelEngine::mReportingEngine);
     ReadHandler * readHandler         = imEngine->mReadHandlers + mCurReadHandlerIdx;
 
     while ((mNumReportsInFlight < CHIP_MAX_REPORTS_IN_FLIGHT) && (numReadHandled < CHIP_MAX_NUM_READ_HANDLER))

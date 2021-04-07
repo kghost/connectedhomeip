@@ -88,7 +88,7 @@ static_library("app") {
   public_deps = [
     ":codec_headers",
     "${chip_root}/src/lib/support",
-    "${chip_root}/src/messaging",
+    "${chip_root}/src/stack:stack_impl",
     "${chip_root}/src/system",
     "${nlio_root}:nlio",
   ]

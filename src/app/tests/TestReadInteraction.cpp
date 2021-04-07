@@ -22,30 +22,24 @@
  *
  */
 
-#include <app/InteractionModelEngine.h>
 #include <core/CHIPCore.h>
 #include <core/CHIPTLV.h>
 #include <core/CHIPTLVDebug.hpp>
 #include <core/CHIPTLVUtilities.hpp>
 #include <messaging/ExchangeContext.h>
-#include <messaging/ExchangeMgr.h>
 #include <messaging/Flags.h>
 #include <platform/CHIPDeviceLayer.h>
+#include <stack/StackImpl.h>
 #include <support/ErrorStr.h>
 #include <support/UnitTestRegistration.h>
 #include <system/SystemPacketBuffer.h>
 #include <system/TLVPacketBufferBackingStore.h>
 #include <transport/PASESession.h>
-#include <transport/SecureSessionMgr.h>
-#include <transport/raw/UDP.h>
 
 #include <nlunit-test.h>
 
 namespace chip {
-System::Layer gSystemLayer;
-SecureSessionMgr gSessionManager;
-Messaging::ExchangeManager gExchangeManager;
-TransportMgr<Transport::UDP> gTransportManager;
+static StackImpl<> gChipStack(chip::kTestControllerNodeId);
 const Transport::AdminId gAdminId = 0;
 
 namespace app {
@@ -90,7 +84,7 @@ void TestReadInteraction::TestReadClient(nlTestSuite * apSuite, void * apContext
     app::ReadClient readClient;
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
-    err                            = readClient.Init(&gExchangeManager, nullptr);
+    err                            = readClient.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
     err = readClient.SendReadRequest(kTestDeviceNodeId, gAdminId, nullptr, 0);
@@ -113,8 +107,6 @@ void TestReadInteraction::TestReadHandler(nlTestSuite * apSuite, void * apContex
     System::PacketBufferHandle readRequestbuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
     ReadRequest::Builder readRequestBuilder;
 
-    err = InteractionModelEngine::GetInstance()->Init(&gExchangeManager, nullptr);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
     readHandler.Init(nullptr);
 
     GenerateReportData(apSuite, apContext, reportDatabuf);
@@ -131,7 +123,7 @@ void TestReadInteraction::TestReadHandler(nlTestSuite * apSuite, void * apContex
     err = writer.Finalize(&readRequestbuf);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    err = readHandler.OnReadRequest(nullptr, std::move(readRequestbuf));
+    err = readHandler.OnReadRequest(&gChipStack.GetInteractionModelEngine(), nullptr, std::move(readRequestbuf));
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 }
 
@@ -143,22 +135,18 @@ namespace {
 void InitializeChip(nlTestSuite * apSuite)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+
+    err = chip::Platform::MemoryInit();
+    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+
+    err = chip::gChipStack.Init();
+    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+
     chip::Optional<chip::Transport::PeerAddress> peer(chip::Transport::Type::kUndefined);
     chip::Transport::AdminPairingTable admins;
     chip::Transport::AdminPairingInfo * adminInfo = admins.AssignAdminId(chip::gAdminId, chip::kTestDeviceNodeId);
 
     NL_TEST_ASSERT(apSuite, adminInfo != nullptr);
-
-    err = chip::Platform::MemoryInit();
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    chip::gSystemLayer.Init(nullptr);
-
-    err = chip::gSessionManager.Init(chip::kTestDeviceNodeId, &chip::gSystemLayer, &chip::gTransportManager, &admins);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    err = chip::gExchangeManager.Init(&chip::gSessionManager);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 }
 
 /**

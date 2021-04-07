@@ -34,7 +34,7 @@ public:
     }
 
     /////////// Command Interface /////////
-    CHIP_ERROR Run(PersistentStorage & storage, NodeId localId, NodeId remoteId) override;
+    CHIP_ERROR Run(chip::ControllerStack * stack, NodeId remoteId) override;
 
     /////////// DeviceStatusDelegate Interface /////////
     void OnMessage(PacketBufferHandle buffer) override;
@@ -45,6 +45,5 @@ public:
 private:
     uint8_t mEndPointId;
 
-    ChipDeviceCommissioner mCommissioner;
     ChipDevice * mDevice;
 };

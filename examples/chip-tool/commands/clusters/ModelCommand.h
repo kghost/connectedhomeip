@@ -35,12 +35,11 @@ public:
     void AddArguments() { AddArgument("endpoint-id", CHIP_ZCL_ENDPOINT_MIN, CHIP_ZCL_ENDPOINT_MAX, &mEndPointId); }
 
     /////////// Command Interface /////////
-    CHIP_ERROR Run(PersistentStorage & storage, NodeId localId, NodeId remoteId) override;
+    CHIP_ERROR Run(chip::ControllerStack * stack, NodeId remoteId) override;
 
     virtual CHIP_ERROR SendCommand(ChipDevice * device, uint8_t endPointId) = 0;
 
 private:
-    ChipDeviceCommissioner mCommissioner;
     ChipDevice * mDevice;
     uint8_t mEndPointId;
 };

@@ -35,6 +35,7 @@
 #include <core/CHIPTLV.h>
 #include <messaging/ExchangeMgr.h>
 #include <messaging/ExchangeMgrDelegate.h>
+#include <stack/Stack.h>
 #include <support/DLLUtil.h>
 #include <support/SerializableIntegerSet.h>
 #include <transport/AdminPairingTable.h>
@@ -50,16 +51,6 @@ namespace Controller {
 
 constexpr uint16_t kNumMaxActiveDevices = 64;
 constexpr uint16_t kNumMaxPairedDevices = 128;
-
-struct ControllerInitParams
-{
-    PersistentStorageDelegate * storageDelegate = nullptr;
-    System::Layer * systemLayer                 = nullptr;
-    Inet::InetLayer * inetLayer                 = nullptr;
-#if CHIP_ENABLE_INTERACTION_MODEL
-    app::InteractionModelDelegate * imDelegate = nullptr;
-#endif
-};
 
 class DLL_EXPORT DevicePairingDelegate
 {
@@ -127,16 +118,7 @@ public:
     DeviceController();
     virtual ~DeviceController() {}
 
-    /**
-     * Init function to be used when there exists a device layer that takes care of initializing
-     * System::Layer and InetLayer.
-     */
-    CHIP_ERROR Init(NodeId localDeviceId, ControllerInitParams params);
-
-    // Note: Future modifications should be made to ControllerInitParams
-    CHIP_ERROR Init(NodeId localDeviceId, PersistentStorageDelegate * storageDelegate = nullptr,
-                    System::Layer * systemLayer = nullptr, Inet::InetLayer * inetLayer = nullptr);
-
+    CHIP_ERROR Init(Stack * stack, PersistentStorageDelegate * storageDelegate);
     virtual CHIP_ERROR Shutdown();
 
     /**
@@ -167,8 +149,6 @@ public:
     CHIP_ERROR GetDevice(NodeId deviceId, Device ** device);
 
     void PersistDevice(Device * device);
-
-    CHIP_ERROR SetUdpListenPort(uint16_t listenPort);
 
     virtual void ReleaseDevice(Device * device);
 
@@ -206,15 +186,9 @@ protected:
     SerializableU64Set<kNumMaxPairedDevices> mPairedDevices;
     bool mPairedDevicesInitialized;
 
-    NodeId mLocalDeviceId;
-    DeviceTransportMgr * mTransportMgr;
-    SecureSessionMgr * mSessionMgr;
-    Messaging::ExchangeManager * mExchangeMgr;
+    Stack * mStack;
     PersistentStorageDelegate * mStorageDelegate;
-    Inet::InetLayer * mInetLayer;
-    System::Layer * mSystemLayer;
 
-    uint16_t mListenPort;
     uint16_t GetInactiveDeviceIndex();
     uint16_t FindDeviceIndex(SecureSessionHandle session);
     uint16_t FindDeviceIndex(NodeId id);
@@ -222,11 +196,8 @@ protected:
     void ReleaseDeviceById(NodeId remoteDeviceId);
     CHIP_ERROR InitializePairedDeviceList();
     CHIP_ERROR SetPairedDeviceList(const char * pairedDeviceSerializedSet);
-    ControllerDeviceInitParams GetControllerDeviceInitParams();
 
     Transport::AdminId mAdminId = 0;
-    Transport::AdminPairingTable mAdmins;
-
 private:
     //////////// ExchangeDelegate Implementation ///////////////
     void OnMessageReceived(Messaging::ExchangeContext * ec, const PacketHeader & packetHeader, const PayloadHeader & payloadHeader,
@@ -280,12 +251,7 @@ public:
      * Init function to be used when there exists a device layer that takes care of initializing
      * System::Layer and InetLayer.
      */
-    CHIP_ERROR Init(NodeId localDeviceId, ControllerInitParams params, DevicePairingDelegate * pairingDelegate = nullptr);
-
-    // Note: Future modifications should be made to ControllerInitParams
-    CHIP_ERROR Init(NodeId localDeviceId, PersistentStorageDelegate * storageDelegate = nullptr,
-                    DevicePairingDelegate * pairingDelegate = nullptr, System::Layer * systemLayer = nullptr,
-                    Inet::InetLayer * inetLayer = nullptr);
+    CHIP_ERROR Init(Stack * stack, PersistentStorageDelegate * storageDelegate, DevicePairingDelegate * pairingDelegate = nullptr);
 
     void SetDevicePairingDelegate(DevicePairingDelegate * pairingDelegate) { mPairingDelegate = pairingDelegate; }
 

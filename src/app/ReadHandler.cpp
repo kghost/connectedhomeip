@@ -64,14 +64,14 @@ CHIP_ERROR ReadHandler::ClearExistingExchangeContext()
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR ReadHandler::OnReadRequest(Messaging::ExchangeContext * apExchangeContext, System::PacketBufferHandle aPayload)
+CHIP_ERROR ReadHandler::OnReadRequest(InteractionModelEngine * imEngine, Messaging::ExchangeContext * apExchangeContext, System::PacketBufferHandle aPayload)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     System::PacketBufferHandle response;
 
     mpExchangeCtx = apExchangeContext;
 
-    err = ProcessReadRequest(std::move(aPayload));
+    err = ProcessReadRequest(imEngine, std::move(aPayload));
     SuccessOrExit(err);
 
 exit:
@@ -95,7 +95,7 @@ exit:
     return err;
 }
 
-CHIP_ERROR ReadHandler::ProcessReadRequest(System::PacketBufferHandle aPayload)
+CHIP_ERROR ReadHandler::ProcessReadRequest(InteractionModelEngine * imEngine, System::PacketBufferHandle aPayload)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     System::PacketBufferTLVReader reader;
@@ -145,7 +145,7 @@ CHIP_ERROR ReadHandler::ProcessReadRequest(System::PacketBufferHandle aPayload)
 
     MoveToState(HandlerState::Reportable);
 
-    err = InteractionModelEngine::GetInstance()->GetReportingEngine().ScheduleRun();
+    err = imEngine->GetReportingEngine().ScheduleRun();
 
 exit:
     ChipLogFunctError(err);

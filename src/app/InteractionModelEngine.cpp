@@ -31,14 +31,6 @@
 
 namespace chip {
 namespace app {
-InteractionModelEngine sInteractionModelEngine;
-
-InteractionModelEngine::InteractionModelEngine() {}
-
-InteractionModelEngine * InteractionModelEngine::GetInstance()
-{
-    return &sInteractionModelEngine;
-}
 
 CHIP_ERROR InteractionModelEngine::Init(Messaging::ExchangeManager * apExchangeMgr, InteractionModelDelegate * apDelegate)
 {
@@ -188,7 +180,7 @@ void InteractionModelEngine::OnReadRequest(Messaging::ExchangeContext * apExchan
         {
             err = readHandler.Init(mpDelegate);
             SuccessOrExit(err);
-            err = readHandler.OnReadRequest(apExchangeContext, std::move(aPayload));
+            err = readHandler.OnReadRequest(this, apExchangeContext, std::move(aPayload));
             SuccessOrExit(err);
             apExchangeContext = nullptr;
             break;
@@ -240,9 +232,5 @@ DispatchSingleClusterCommand(chip::ClusterId aClusterId, chip::CommandId aComman
         "Default DispatchSingleClusterCommand is called, this should be replaced by actual dispatched for cluster commands");
 }
 
-uint16_t InteractionModelEngine::GetReadClientArrayIndex(const ReadClient * const apReadClient) const
-{
-    return static_cast<uint16_t>(apReadClient - mReadClients);
-}
 } // namespace app
 } // namespace chip

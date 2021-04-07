@@ -25,18 +25,16 @@
 #pragma once
 
 #include <app/util/basic-types.h>
-#include <messaging/ExchangeMgr.h>
+#include <stack/StackImpl.h>
 
 #define MAX_MESSAGE_SOURCE_STR_LENGTH (100)
 #define NETWORK_SLEEP_TIME_MSECS (100 * 1000)
 
-extern chip::Messaging::ExchangeManager gExchangeManager;
+extern chip::StackImpl<> gChipStack;
 
 constexpr chip::ClusterId kTestClusterId   = 6;
 constexpr chip::CommandId kTestCommandId   = 40;
 constexpr chip::EndpointId kTestEndPointId = 1;
 constexpr chip::GroupId kTestGroupId       = 0;
 
-void InitializeChip(void);
-void ShutdownChip(void);
 void TLVPrettyPrinter(const char * aFormat, ...);

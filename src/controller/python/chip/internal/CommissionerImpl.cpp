@@ -19,6 +19,7 @@
 #include <controller/CHIPDeviceController.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/KeyValueStoreManager.h>
+#include <stack/ControllerStackImpl.h>
 #include <support/logging/CHIPLogging.h>
 
 #include "ChipThreadWork.h"
@@ -206,23 +207,17 @@ pychip_internal_PairingDelegate_SetPairingCompleteCallback(ScriptDevicePairingDe
     gPairingDelegate.SetPairingCompleteCallback(callback);
 }
 
-extern "C" chip::Controller::DeviceCommissioner * pychip_internal_Commissioner_New(uint64_t localDeviceId)
+extern "C" chip::ControllerStackImpl<> * pychip_internal_Commissioner_New(uint64_t localDeviceId)
 {
-    std::unique_ptr<chip::Controller::DeviceCommissioner> result;
+    std::unique_ptr<chip::ControllerStackImpl<>> result;
     CHIP_ERROR err;
 
     chip::python::ChipMainThreadScheduleAndWait([&]() {
-        result = std::make_unique<chip::Controller::DeviceCommissioner>();
+        result = std::make_unique<chip::ControllerStackImpl<>>(localDeviceId);
 
         // System and Inet layers explicitly passed to indicate that the CHIP stack is
         // already assumed initialized
-        err = result->Init(localDeviceId,
-                           chip::Controller::ControllerInitParams{
-                               .storageDelegate = &gServerStorage,
-                               .systemLayer     = &chip::DeviceLayer::SystemLayer,
-                               .inetLayer       = &chip::DeviceLayer::InetLayer,
-                           },
-                           &gPairingDelegate);
+        err = result->InitController(&gServerStorage, &gPairingDelegate);
     });
 
     if (err != CHIP_NO_ERROR)
@@ -235,17 +230,16 @@ extern "C" chip::Controller::DeviceCommissioner * pychip_internal_Commissioner_N
 }
 
 /// Returns CHIP_ERROR corresponding to an UnpairDevice call
-extern "C" uint32_t pychip_internal_Commissioner_Unpair(chip::Controller::DeviceCommissioner * commissioner,
-                                                        uint64_t remoteDeviceId)
+extern "C" uint32_t pychip_internal_Commissioner_Unpair(chip::ControllerStack * controllerStack, uint64_t remoteDeviceId)
 {
     CHIP_ERROR err;
 
-    chip::python::ChipMainThreadScheduleAndWait([&]() { err = commissioner->UnpairDevice(remoteDeviceId); });
+    chip::python::ChipMainThreadScheduleAndWait([&]() { err = controllerStack->GetDeviceCommissioner().UnpairDevice(remoteDeviceId); });
 
     return err;
 }
 
-extern "C" uint32_t pychip_internal_Commissioner_BleConnectForPairing(chip::Controller::DeviceCommissioner * commissioner,
+extern "C" uint32_t pychip_internal_Commissioner_BleConnectForPairing(chip::ControllerStack * controllerStack,
                                                                       uint64_t remoteNodeId, uint32_t pinCode,
                                                                       uint16_t discriminator)
 {
@@ -260,7 +254,7 @@ extern "C" uint32_t pychip_internal_Commissioner_BleConnectForPairing(chip::Cont
         params.SetBleLayer(chip::DeviceLayer::ConnectivityMgr().GetBleLayer()).SetPeerAddress(chip::Transport::PeerAddress::BLE());
 #endif
 
-        err = commissioner->PairDevice(remoteNodeId, params);
+        err = controllerStack->GetDeviceCommissioner().PairDevice(remoteNodeId, params);
     });
 
     return err;

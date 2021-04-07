@@ -62,11 +62,12 @@ CHIP_ERROR Device::SendMessage(Protocols::Id protocolId, uint8_t msgType, System
     bool loadedSecureSession = false;
     Messaging::SendFlags sendFlags;
 
+    VerifyOrReturnError(mStack != nullptr, CHIP_ERROR_INCORRECT_STATE);
     VerifyOrReturnError(!buffer.IsNull(), CHIP_ERROR_INVALID_ARGUMENT);
 
     ReturnErrorOnFailure(LoadSecureSessionParametersIfNeeded(loadedSecureSession));
 
-    Messaging::ExchangeContext * exchange = mExchangeMgr->NewContext(mSecureSession, nullptr);
+    Messaging::ExchangeContext * exchange = mStack->GetExchangeManager().NewContext(mSecureSession, nullptr);
     VerifyOrReturnError(exchange != nullptr, CHIP_ERROR_NO_MEMORY);
 
     if (!loadedSecureSession)
@@ -125,7 +126,7 @@ CHIP_ERROR Device::LoadSecureSessionParametersIfNeeded(bool & didLoad)
     else
     {
         Transport::PeerConnectionState * connectionState = nullptr;
-        connectionState                                  = mSessionManager->GetPeerConnectionState(mSecureSession);
+        connectionState                                  = mStack->GetSecureSessionManager().GetPeerConnectionState(mSecureSession);
 
         // Check if the connection state has the correct transport information
         if (connectionState == nullptr || connectionState->GetPeerAddress().GetTransportType() == Transport::Type::kUndefined ||
@@ -303,7 +304,7 @@ CHIP_ERROR Device::UpdateAddress(const Transport::PeerAddress & addr)
     VerifyOrReturnError(addr.GetTransportType() == Transport::Type::kUdp, CHIP_ERROR_INVALID_ADDRESS);
     ReturnErrorOnFailure(LoadSecureSessionParametersIfNeeded(didLoad));
 
-    Transport::PeerConnectionState * connectionState = mSessionManager->GetPeerConnectionState(mSecureSession);
+    Transport::PeerConnectionState * connectionState = mStack->GetSecureSessionManager().GetPeerConnectionState(mSecureSession);
     VerifyOrReturnError(connectionState != nullptr, CHIP_ERROR_INCORRECT_STATE);
 
     mDeviceUdpAddress = addr;
@@ -317,7 +318,7 @@ CHIP_ERROR Device::LoadSecureSessionParameters(ResetTransport resetNeeded)
     CHIP_ERROR err = CHIP_NO_ERROR;
     PASESession pairingSession;
 
-    if (mSessionManager == nullptr || mState == ConnectionState::SecureConnected)
+    if (mState == ConnectionState::SecureConnected)
     {
         ExitNow(err = CHIP_ERROR_INCORRECT_STATE);
     }
@@ -327,17 +328,11 @@ CHIP_ERROR Device::LoadSecureSessionParameters(ResetTransport resetNeeded)
 
     if (resetNeeded == ResetTransport::kYes)
     {
-        err = mTransportMgr->ResetTransport(
-            Transport::UdpListenParameters(mInetLayer).SetAddressType(kIPAddressType_IPv6).SetListenPort(mListenPort)
-#if INET_CONFIG_ENABLE_IPV4
-                ,
-            Transport::UdpListenParameters(mInetLayer).SetAddressType(kIPAddressType_IPv4).SetListenPort(mListenPort)
-#endif
-        );
+        err = mStack->ResetTransport();
         SuccessOrExit(err);
     }
 
-    err = mSessionManager->NewPairing(Optional<Transport::PeerAddress>::Value(mDeviceUdpAddress), mDeviceId, &pairingSession,
+    err = mStack->GetSecureSessionManager().NewPairing(Optional<Transport::PeerAddress>::Value(mDeviceUdpAddress), mDeviceId, &pairingSession,
                                       SecureSessionMgr::PairingDirection::kInitiator, mAdminId);
     SuccessOrExit(err);
 

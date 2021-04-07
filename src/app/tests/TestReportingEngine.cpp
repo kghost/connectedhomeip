@@ -22,31 +22,24 @@
  *
  */
 
-#include <app/InteractionModelEngine.h>
 #include <app/reporting/Engine.h>
 #include <core/CHIPCore.h>
 #include <core/CHIPTLV.h>
 #include <core/CHIPTLVDebug.hpp>
 #include <core/CHIPTLVUtilities.hpp>
 #include <messaging/ExchangeContext.h>
-#include <messaging/ExchangeMgr.h>
 #include <messaging/Flags.h>
 #include <platform/CHIPDeviceLayer.h>
+#include <stack/StackImpl.h>
 #include <support/ErrorStr.h>
 #include <support/UnitTestRegistration.h>
 #include <system/SystemPacketBuffer.h>
 #include <system/TLVPacketBufferBackingStore.h>
-#include <transport/PASESession.h>
-#include <transport/SecureSessionMgr.h>
-#include <transport/raw/UDP.h>
 
 #include <nlunit-test.h>
 
 namespace chip {
-static System::Layer gSystemLayer;
-static SecureSessionMgr gSessionManager;
-static Messaging::ExchangeManager gExchangeManager;
-static TransportMgr<Transport::UDP> gTransportManager;
+static StackImpl<> gChipStack(chip::kTestControllerNodeId);
 static const Transport::AdminId gAdminId = 0;
 
 namespace app {
@@ -66,9 +59,7 @@ void TestReportingEngine::TestBuildAndSendSingleReportData(nlTestSuite * apSuite
     System::PacketBufferHandle readRequestbuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
     ReadRequest::Builder readRequestBuilder;
 
-    err = InteractionModelEngine::GetInstance()->Init(&gExchangeManager, nullptr);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    Messaging::ExchangeContext * exchangeCtx = gExchangeManager.NewContext({ 0, 0, 0 }, nullptr);
+    Messaging::ExchangeContext * exchangeCtx = gChipStack.GetExchangeManager().NewContext({ 0, 0, 0 }, nullptr);
     writer.Init(std::move(readRequestbuf));
     err = readRequestBuilder.Init(&writer);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
@@ -79,7 +70,7 @@ void TestReportingEngine::TestBuildAndSendSingleReportData(nlTestSuite * apSuite
     err = writer.Finalize(&readRequestbuf);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    readHandler.OnReadRequest(exchangeCtx, std::move(readRequestbuf));
+    readHandler.OnReadRequest(&gChipStack.GetInteractionModelEngine(), exchangeCtx, std::move(readRequestbuf));
     reportingEngine.Init();
     err = reportingEngine.BuildAndSendSingleReportData(&readHandler);
     NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_NOT_CONNECTED);
@@ -92,22 +83,18 @@ namespace {
 void InitializeChip(nlTestSuite * apSuite)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
-    chip::Optional<chip::Transport::PeerAddress> peer(chip::Transport::Type::kUndefined);
-    chip::Transport::AdminPairingTable admins;
-    chip::Transport::AdminPairingInfo * adminInfo = admins.AssignAdminId(chip::gAdminId, chip::kTestDeviceNodeId);
-
-    NL_TEST_ASSERT(apSuite, adminInfo != nullptr);
 
     err = chip::Platform::MemoryInit();
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    chip::gSystemLayer.Init(nullptr);
-
-    err = chip::gSessionManager.Init(chip::kTestDeviceNodeId, &chip::gSystemLayer, &chip::gTransportManager, &admins);
+    err = chip::gChipStack.Init();
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    err = chip::gExchangeManager.Init(&chip::gSessionManager);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    chip::Optional<chip::Transport::PeerAddress> peer(chip::Transport::Type::kUndefined);
+
+    chip::Transport::AdminPairingTable admins;
+    chip::Transport::AdminPairingInfo * adminInfo = admins.AssignAdminId(chip::gAdminId, chip::kTestDeviceNodeId);
+    NL_TEST_ASSERT(apSuite, adminInfo != nullptr);
 }
 
 // clang-format off

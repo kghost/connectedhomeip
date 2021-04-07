@@ -28,22 +28,16 @@ namespace {
 constexpr uint16_t kWaitDurationInSeconds = UINT16_MAX;
 } // namespace
 
-CHIP_ERROR ReportingCommand::Run(PersistentStorage & storage, NodeId localId, NodeId remoteId)
+CHIP_ERROR ReportingCommand::Run(chip::ControllerStack * stack, NodeId remoteId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     chip::Controller::BasicCluster cluster;
 
-    err = mCommissioner.SetUdpListenPort(storage.GetListenPort());
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Commissioner: %s", ErrorStr(err)));
-
-    err = mCommissioner.Init(localId, &storage);
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Commissioner: %s", ErrorStr(err)));
-
-    err = mCommissioner.ServiceEvents();
+    err = stack->GetDeviceCommissioner().ServiceEvents();
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init failure! Run Loop: %s", ErrorStr(err)));
 
-    err = mCommissioner.GetDevice(remoteId, &mDevice);
-    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Init failure! No pairing for device: %" PRIu64, localId));
+    err = stack->GetDeviceCommissioner().GetDevice(remoteId, &mDevice);
+    VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Init failure! No pairing for device: %" PRIu64, stack->GetLocalNodeId()));
 
     mDevice->SetDelegate(this);
 
@@ -57,8 +51,7 @@ CHIP_ERROR ReportingCommand::Run(PersistentStorage & storage, NodeId localId, No
     WaitForResponse(kWaitDurationInSeconds);
 
 exit:
-    mCommissioner.ServiceEventSignal();
-    mCommissioner.Shutdown();
+    stack->GetDeviceCommissioner().ServiceEventSignal();
     return err;
 }
 

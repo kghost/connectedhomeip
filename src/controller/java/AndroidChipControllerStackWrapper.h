@@ -18,11 +18,19 @@
 #pragma once
 
 #include <memory>
+#include <pthread.h>
 
 #include <jni.h>
 
 #include <controller/CHIPDeviceController.h>
+#include <controller/java/AndroidBleManager.h>
 #include <platform/internal/DeviceNetworkInfo.h>
+#include <stack/ControllerStackImpl.h>
+
+// Choose an approximation of PTHREAD_NULL if pthread.h doesn't define one.
+#ifndef PTHREAD_NULL
+#define PTHREAD_NULL 0
+#endif // PTHREAD_NULL
 
 /**
  * This class contains all relevant information for the JNI view of CHIPDeviceController
@@ -30,14 +38,21 @@
  *
  * Generally it contains the DeviceController class itself, plus any related delegates/callbacks.
  */
-class AndroidDeviceControllerWrapper : public chip::Controller::DevicePairingDelegate,
+class AndroidChipControllerStackWrapper : public chip::Controller::DevicePairingDelegate,
                                        public chip::Controller::DeviceStatusDelegate,
                                        public chip::PersistentStorageDelegate
 {
 public:
-    ~AndroidDeviceControllerWrapper();
+    AndroidChipControllerStackWrapper(chip::NodeId nodeId) : mChipStack(nodeId) {};
+    ~AndroidChipControllerStackWrapper();
 
-    chip::Controller::DeviceCommissioner * Controller() { return mController.get(); }
+    CHIP_ERROR Init(int listeningPort);
+
+    chip::System::Layer & GetSystemLayer() { return mChipStack.GetSystemLayer(); }
+    chip::Inet::InetLayer & GetInetLayer() { return mChipStack.GetInetLayer(); }
+    chip::Ble::BleLayer * GetBleLayer() { return mChipStack.GetBleLayer(); }
+    chip::Controller::DeviceCommissioner * Controller() { return &mChipStack.GetDeviceCommissioner(); }
+
     void SetJavaObjectRef(JavaVM * vm, jobject obj);
 
     void SendNetworkCredentials(const char * ssid, const char * password);
@@ -69,19 +84,18 @@ public:
 
     jobject JavaObjectRef() { return mJavaObjectRef; }
 
-    static AndroidDeviceControllerWrapper * FromJNIHandle(jlong handle)
+    static AndroidChipControllerStackWrapper * FromJNIHandle(jlong handle)
     {
-        return reinterpret_cast<AndroidDeviceControllerWrapper *>(handle);
+        return reinterpret_cast<AndroidChipControllerStackWrapper *>(handle);
     }
 
-    static AndroidDeviceControllerWrapper * AllocateNew(JavaVM * vm, jobject deviceControllerObj, chip::NodeId nodeId,
-                                                        chip::System::Layer * systemLayer, chip::Inet::InetLayer * inetLayer,
-                                                        CHIP_ERROR * errInfoOnFailure);
+    static AndroidChipControllerStackWrapper * AllocateNew(JavaVM * vm, jobject deviceControllerObj, chip::NodeId nodeId, CHIP_ERROR * errInfoOnFailure);
 
 private:
-    using ChipDeviceControllerPtr = std::unique_ptr<chip::Controller::DeviceCommissioner>;
+    chip::ControllerStackImpl<AndroidBleManager> mChipStack;
+    pthread_t sIOThread        = PTHREAD_NULL;
+    bool sShutdown             = false;
 
-    ChipDeviceControllerPtr mController;
     chip::RendezvousDeviceCredentialsDelegate * mCredentialsDelegate = nullptr;
     chip::PersistentStorageResultDelegate * mStorageResultDelegate   = nullptr;
 
@@ -91,6 +105,4 @@ private:
     JNIEnv * GetJavaEnv();
 
     jclass GetPersistentStorageClass() { return GetJavaEnv()->FindClass("chip/devicecontroller/PersistentStorage"); }
-
-    AndroidDeviceControllerWrapper(ChipDeviceControllerPtr controller) : mController(std::move(controller)) {}
 };

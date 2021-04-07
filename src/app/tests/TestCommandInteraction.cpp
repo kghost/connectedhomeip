@@ -22,30 +22,24 @@
  *
  */
 
-#include <app/InteractionModelEngine.h>
 #include <core/CHIPCore.h>
 #include <core/CHIPTLV.h>
 #include <core/CHIPTLVDebug.hpp>
 #include <core/CHIPTLVUtilities.hpp>
 #include <messaging/ExchangeContext.h>
-#include <messaging/ExchangeMgr.h>
 #include <messaging/Flags.h>
 #include <platform/CHIPDeviceLayer.h>
+#include <stack/StackImpl.h>
 #include <support/ErrorStr.h>
 #include <support/UnitTestRegistration.h>
 #include <system/SystemPacketBuffer.h>
 #include <system/TLVPacketBufferBackingStore.h>
 #include <transport/PASESession.h>
-#include <transport/SecureSessionMgr.h>
-#include <transport/raw/UDP.h>
 
 #include <nlunit-test.h>
 
 namespace chip {
-static System::Layer gSystemLayer;
-static SecureSessionMgr gSessionManager;
-static Messaging::ExchangeManager gExchangeManager;
-static TransportMgr<Transport::UDP> gTransportManager;
+static StackImpl<> gChipStack(chip::kTestControllerNodeId);
 static Transport::AdminId gAdminId = 0;
 
 namespace app {
@@ -162,7 +156,7 @@ void TestCommandInteraction::TestCommandSenderWithSendCommand(nlTestSuite * apSu
     app::CommandSender commandSender;
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
-    err                            = commandSender.Init(&gExchangeManager, nullptr);
+    err                            = commandSender.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
     AddCommandDataElement(apSuite, apContext, &commandSender, false, false);
@@ -185,10 +179,10 @@ void TestCommandInteraction::TestCommandHandlerWithSendEmptyCommand(nlTestSuite 
                                                         (chip::app::Command::CommandPathFlags::kEndpointIdValid) };
     app::CommandHandler commandHandler;
     System::PacketBufferHandle commandDatabuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
-    err                                       = commandHandler.Init(&chip::gExchangeManager, nullptr);
+    err                                       = commandHandler.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    commandHandler.mpExchangeCtx = gExchangeManager.NewContext({ 0, 0, 0 }, nullptr);
+    commandHandler.mpExchangeCtx = gChipStack.GetExchangeManager().NewContext({ 0, 0, 0 }, nullptr);
     err                          = commandHandler.AddCommand(commandParams);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
     err = commandHandler.SendCommandResponse();
@@ -203,7 +197,7 @@ void TestCommandInteraction::TestCommandSenderWithProcessReceivedMsg(nlTestSuite
     app::CommandSender commandSender;
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
-    err                            = commandSender.Init(&gExchangeManager, nullptr);
+    err                            = commandSender.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
     GenerateReceivedCommand(apSuite, apContext, buf);
@@ -217,10 +211,10 @@ void TestCommandInteraction::ValidateCommandHandlerWithSendCommand(nlTestSuite *
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     app::CommandHandler commandHandler;
-    err = commandHandler.Init(&chip::gExchangeManager, nullptr);
+    err = commandHandler.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 
-    commandHandler.mpExchangeCtx = gExchangeManager.NewContext({ 0, 0, 0 }, nullptr);
+    commandHandler.mpExchangeCtx = gChipStack.GetExchangeManager().NewContext({ 0, 0, 0 }, nullptr);
     ;
     AddCommandDataElement(apSuite, apContext, &commandHandler, aNeedStatusCode, aIsEmptyResponse);
     err = commandHandler.SendCommandResponse();
@@ -250,7 +244,7 @@ void TestCommandInteraction::TestCommandHandlerWithProcessReceivedMsg(nlTestSuit
     CHIP_ERROR err = CHIP_NO_ERROR;
     app::CommandHandler commandHandler;
     System::PacketBufferHandle commandDatabuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
-    err                                       = commandHandler.Init(&chip::gExchangeManager, nullptr);
+    err                                       = commandHandler.Init(&gChipStack.GetExchangeManager(), nullptr);
     NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
     GenerateReceivedCommand(apSuite, apContext, commandDatabuf);
     err = commandHandler.ProcessCommandMessage(std::move(commandDatabuf), Command::CommandRoleId::HandlerId);
@@ -266,25 +260,18 @@ namespace {
 void InitializeChip(nlTestSuite * apSuite)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+
+    err = chip::Platform::MemoryInit();
+    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+
+    err = chip::gChipStack.Init();
+    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+
     chip::Optional<chip::Transport::PeerAddress> peer(chip::Transport::Type::kUndefined);
     chip::Transport::AdminPairingTable admins;
     chip::Transport::AdminPairingInfo * adminInfo = admins.AssignAdminId(chip::gAdminId, chip::kTestDeviceNodeId);
 
     NL_TEST_ASSERT(apSuite, adminInfo != nullptr);
-
-    err = chip::Platform::MemoryInit();
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    chip::gSystemLayer.Init(nullptr);
-
-    err = chip::gSessionManager.Init(chip::kTestDeviceNodeId, &chip::gSystemLayer, &chip::gTransportManager, &admins);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    err = chip::gExchangeManager.Init(&chip::gSessionManager);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    err = chip::app::InteractionModelEngine::GetInstance()->Init(&chip::gExchangeManager, nullptr);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
 }
 
 // clang-format off

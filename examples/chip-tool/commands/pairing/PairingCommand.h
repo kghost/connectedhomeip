@@ -59,7 +59,7 @@ public:
     }
 
     /////////// Command Interface /////////
-    CHIP_ERROR Run(PersistentStorage & storage, NodeId localId, NodeId remoteId) override;
+    CHIP_ERROR Run(chip::ControllerStack * stack, NodeId remoteId) override;
 
     /////////// DevicePairingDelegate Interface /////////
     void OnStatusUpdate(chip::RendezvousSessionDelegate::Status status) override;
@@ -70,10 +70,10 @@ public:
     void OnPairingDeleted(CHIP_ERROR error) override;
 
 private:
-    CHIP_ERROR RunInternal(NodeId remoteId);
-    CHIP_ERROR Pair(NodeId remoteId, PeerAddress address);
-    CHIP_ERROR PairWithoutSecurity(NodeId remoteId, PeerAddress address);
-    CHIP_ERROR Unpair(NodeId remoteId);
+    CHIP_ERROR RunInternal(chip::ControllerStack * stack, NodeId remoteId);
+    CHIP_ERROR Pair(chip::ControllerStack * stack, NodeId remoteId, PeerAddress address);
+    CHIP_ERROR PairWithoutSecurity(chip::ControllerStack * stack, NodeId remoteId, PeerAddress address);
+    CHIP_ERROR Unpair(chip::ControllerStack * stack, NodeId remoteId);
 
     const PairingMode mPairingMode;
     Command::AddressWithInterface mRemoteAddr;
@@ -82,6 +82,4 @@ private:
     uint32_t mSetupPINCode;
     char * mSSID;
     char * mPassword;
-
-    ChipDeviceCommissioner mCommissioner;
 };
