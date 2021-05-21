@@ -226,6 +226,7 @@ private:
     uint16_t mNextExchangeId;
     uint16_t mNextKeyId;
     State mState;
+    char mTestField[256];
 
     ExchangeMgrDelegate * mDelegate;
     SecureSessionMgr * mSessionMgr;
